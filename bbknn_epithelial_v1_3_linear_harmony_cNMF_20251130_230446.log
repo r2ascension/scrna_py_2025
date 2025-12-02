@@ -1,0 +1,1237 @@
+nohup: ignoring input
+scanpy version: 1.9.8
+bbknn: installed
+Configuration loaded successfully
+Total markers defined: 67
+Force include markers: 67
+
+======================================================================
+Epithelial Cell BBKNN Integration Pipeline (Optimized v1.3)
+======================================================================
+
+Output directory: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized
+
+======================================================================
+Step 1: Load Data
+======================================================================
+
+Reading file: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/adata_Epithelial_bbknn.h5ad
+Data loaded successfully
+   Cells: 278,930
+   Genes: 53,973
+
+Available metadata columns:
+   - orig.ident: 28 unique values
+   - nCount_RNA: 34155 unique values
+   - nFeature_RNA: 5785 unique values
+   - plateID: 29 unique values
+   - status: 2 unique values
+   - donorID: 7 unique values
+   - cDate: 7 unique values
+   - age: 7 unique values
+   - sex: 5 unique values
+   - cellType: 10 unique values
+   - percent.mt: 226850 unique values
+   - percent.ribo: 153343 unique values
+   - tissue: 4 unique values
+   - tissue_sampling_method: 5 unique values
+   - dataset: 22 unique values
+   - sample: 161 unique values
+   - percent.rb: 66569 unique values
+   - decontX_contamination: 278930 unique values
+   - decontX_clusters: 236 unique values
+   - nCount_decontXcounts: 25788 unique values
+   - nFeature_decontXcounts: 5773 unique values
+   - donor_id: 96 unique values
+   - Group: 3 unique values
+   - Ethnicity_inferred: 6 unique values
+   - Smoker: 3 unique values
+   - COVID_status: 2 unique values
+   - First_symptoms_collection_interval: 1 unique values
+   - Kit_version: 3 unique values
+   - batch: 59 unique values
+   - log1p_n_genes: 5394 unique values
+   - percent_total_sarscov2: 1 unique values
+   - n_counts_sarscov2: 1 unique values
+   - scrublet_score: 1523 unique values
+   - assay_ontology_term_id: 3 unique values
+   - cell_type_ontology_term_id: 28 unique values
+   - development_stage_ontology_term_id: 14 unique values
+   - self_reported_ethnicity_ontology_term_id: 5 unique values
+   - sex_ontology_term_id: 3 unique values
+   - tissue_ontology_term_id: 3 unique values
+   - suspension_type: 2 unique values
+   - tissue_type: 2 unique values
+   - cell_type: 1 unique values
+   - assay: 9 unique values
+   - self_reported_ethnicity: 9 unique values
+   - development_stage: 44 unique values
+   - observation_joinid: 82196 unique values
+   - Source: 2 unique values
+   - Location: 2 unique values
+   - CellType: 9 unique values
+   - BroadCellType: 5 unique values
+   - organism_ontology_term_id: 2 unique values
+   - BMI: 40 unique values
+   - age_or_mean_of_age_range: 37 unique values
+   - age_range: 6 unique values
+   - anatomical_region_ccf_score: 5 unique values
+   - ann_coarse_for_GWAS_and_modeling: 30 unique values
+   - ann_finest_level: 43 unique values
+   - ann_level_1: 17 unique values
+   - ann_level_2: 51 unique values
+   - ann_level_3: 47 unique values
+   - ann_level_4: 32 unique values
+   - ann_level_5: 14 unique values
+   - cause_of_death: 10 unique values
+   - entropy_dataset_leiden_3: 20 unique values
+   - entropy_original_ann_level_1_leiden_3: 17 unique values
+   - entropy_original_ann_level_2_clean_leiden_3: 19 unique values
+   - entropy_original_ann_level_3_clean_leiden_3: 20 unique values
+   - entropy_subject_ID_leiden_3: 20 unique values
+   - fresh_or_frozen: 3 unique values
+   - leiden_1: 3 unique values
+   - leiden_2: 8 unique values
+   - leiden_3: 21 unique values
+   - leiden_4: 44 unique values
+   - leiden_5: 1 unique values
+   - log10_total_counts: 11608 unique values
+   - lung_condition: 2 unique values
+   - mixed_ancestry: 1 unique values
+   - nFeaturess_RNA_detected: 4475 unique values
+   - original_ann_highest_res: 3 unique values
+   - original_ann_level_1: 3 unique values
+   - original_ann_level_2: 4 unique values
+   - original_ann_level_3: 7 unique values
+   - original_ann_level_4: 11 unique values
+   - original_ann_level_5: 6 unique values
+   - original_ann_nonharmonized: 23 unique values
+   - reannotation_type: 4 unique values
+   - reference_genome: 4 unique values
+   - scanvi_label: 7 unique values
+   - sequencing_platform: 12 unique values
+   - size_factors: 20141 unique values
+   - smoking_status: 4 unique values
+   - study: 19 unique values
+   - subject_type: 3 unique values
+   - tissue_dissociation_protocol: 12 unique values
+   - tissue_level_2: 8 unique values
+   - tissue_level_3: 11 unique values
+   - organism: 2 unique values
+   - percent.rp: 152380 unique values
+   - cell_id: 20776 unique values
+   - condition: 2 unique values
+   - percent.mito: 43201 unique values
+   - seurat_clusters: 63 unique values
+   - matched_sample: 4 unique values
+   - method: 2 unique values
+   - location: 2 unique values
+   - diaglocation: 2 unique values
+   - RNA_snn_res.0.5: 1 unique values
+   - For_MASC: 1 unique values
+   - RNA_snn_res.2: 45 unique values
+   - doublet_status: 2 unique values
+   - RNA_snn_res.2.8: 62 unique values
+   - cell_ann_me: 9 unique values
+   - Annotation: 9 unique values
+   - marker_doublet_type: 9 unique values
+   - is_marker_doublet: 1 unique values
+   - cell_state: 3 unique values
+   - S.Score: 208230 unique values
+   - G2M.Score: 209372 unique values
+   - Phase: 4 unique values
+   - doublet_class: 2 unique values
+   - barcode: 278930 unique values
+   - leiden_bbknn_res1.0: 18 unique values
+   - leiden_bbknn_res1.4: 25 unique values
+   - leiden_bbknn_res1.8: 30 unique values
+   - leiden_bbknn_res2.2: 31 unique values
+   - leiden_bbknn: 25 unique values
+   - ann_finest_level_subcluster: 62 unique values
+   - ann_level_1_subcluster: 45 unique values
+   - ann_level_2_subcluster: 123 unique values
+   - ann_level_3_subcluster: 71 unique values
+   - ann_level_4_subcluster: 50 unique values
+   - ann_level_5_subcluster: 45 unique values
+   - leiden_Epithelial_res0.2: 8 unique values
+   - leiden_Epithelial_res0.4: 11 unique values
+   - leiden_Epithelial_res0.6: 13 unique values
+   - leiden_Epithelial_res0.8: 16 unique values
+   - leiden_Epithelial: 11 unique values
+
+Batch distribution (key: dataset):
+   Banovich_Kropski_2020: 9,139 cells (3.3%)
+   Barbry_Leroy_2020: 25,821 cells (9.3%)
+   Guanrui_Liao_2025: 3,998 cells (1.4%)
+   Jain_Misharin_2021_10Xv1: 8,596 cells (3.1%)
+   Jain_Misharin_2021_10Xv2: 19,972 cells (7.2%)
+   Jennifer_P_Wang_2021: 1,166 cells (0.4%)
+   Ji_Hoon_Ahn_2021: 15,350 cells (5.5%)
+   Kerstin_B_Meyer_2021: 62,054 cells (22.2%)
+   Lafyatis_Rojas_2019_10Xv1: 166 cells (0.1%)
+   Lafyatis_Rojas_2019_10Xv2: 679 cells (0.2%)
+   Maya_E_Kotas_2022: 45,673 cells (16.4%)
+   Meyer_2019: 1,891 cells (0.7%)
+   Misharin_2021: 9,040 cells (3.2%)
+   Misharin_Budinger_2018: 9,929 cells (3.6%)
+   Nawijn_2021: 25,651 cells (9.2%)
+   Ordovas_Montanes_2018: 5,425 cells (1.9%)
+   Seibold_2020_10Xv2: 3,910 cells (1.4%)
+   Seibold_2020_10Xv3: 3,710 cells (1.3%)
+   Tine_Wils_2024: 5,559 cells (2.0%)
+   Waradon_Sungnak_2020: 6,338 cells (2.3%)
+   Weiqing_Wang_2022: 12,507 cells (4.5%)
+   Xinyu_Xie_2024: 2,356 cells (0.8%)
+
+======================================================================
+Step 2: Check Marker Genes
+======================================================================
+
+Marker gene availability:
+   Total: 67
+   Available: 67 (100.0%)
+   Missing: 0 (0.0%)
+
+Key cell type markers:
+   Basal: 2/2 available
+   Secretory: 2/2 available
+   Ciliated: 2/2 available
+   Goblet: 2/2 available
+   Tuft: 2/2 available
+   Ionocyte: 2/2 available
+   AT1: 2/2 available
+   AT2: 2/2 available
+   Proliferating: 2/2 available
+
+======================================================================
+Step 3: Select HVGs (n=3000) and set layers
+----------------------------------------------------------------------
+   Using existing layers['counts'] as raw counts
+   Raw counts saved to layers['counts']
+   ⚠️  HVG(seurat_v3, batch_key=dataset) failed: ValueError(b'reciprocal condition number  2.6618e-16\n')
+      → Fallback to seurat_v3 without batch_key
+   Selected HVGs: 3000; Force retained: 67; Total: 3013
+WARNING: adata.X seems to be already log-transformed.
+   Full matrix normalized and log-transformed
+   layers['log1p'] created
+   Created HVG subset with 3013 genes
+WARNING: adata.X seems to be already log-transformed.
+   HVG subset normalized and log-transformed
+   Set adata_hvg.raw = adata_full (contains 53973 genes)
+   ✓ Complete: raw counts in layers['counts'], log1p in layers['log1p']
+======================================================================
+
+Running PCA (n_comps=50)...
+   PC1-10 explained variance: 34.57%
+   PC1-20 explained variance: 40.63%
+   PC1-50 explained variance: 47.77%
+
+======================================================================
+Step 4: BBKNN Batch Integration
+======================================================================
+
+BBKNN parameters:
+   batch_key: dataset
+   neighbors_within_batch: 3
+   n_pcs: 50
+
+Running BBKNN...
+
+   BBKNN complete, time elapsed: 383.0 seconds
+   BBKNN check → n_batches=22, neighbors_within_batch=3 → expected total neighbors≈66, actual 66
+
+======================================================================
+Step 5: UMAP and Multi-resolution Clustering
+======================================================================
+
+Running UMAP (min_dist=0.5, using BBKNN neighbor graph)...
+   UMAP complete
+
+Running multi-resolution Leiden clustering...
+   Resolution list: [1.2, 1.6, 2.0, 2.4, 2.8]
+   Resolution 1.2: 21 clusters
+   Resolution 1.6: 27 clusters
+   Resolution 2.0: 29 clusters
+   Resolution 2.4: 38 clusters
+   Resolution 2.8: 39 clusters
+
+   Default clustering: leiden_bbknn_res2.0
+
+======================================================================
+Step 6: Compute Cluster Differential Genes (Optimized)
+======================================================================
+
+   Loading from cache...
+   Total markers: 0
+
+======================================================================
+Step 7: Generate Visualizations
+======================================================================
+
+Figures will be saved to: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures
+
+   Generating integration quality overview...
+   ✓ Overview UMAP saved
+
+   Generating multi-resolution clustering plots...
+   ✓ Multi-resolution UMAP saved
+
+   Generating marker expression UMAPs...
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures/umap_Basal_markers.png
+   ✓ Basal markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures/umap_Secretory_markers.png
+   ✓ Secretory markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures/umap_Ciliated_markers.png
+   ✓ Ciliated markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures/umap_Goblet_markers.png
+   ✓ Goblet markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures/umap_Tuft_markers.png
+   ✓ Tuft markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures/umap_Ionocyte_markers.png
+   ✓ Ionocyte markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures/umap_AT1_markers.png
+   ✓ AT1 markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures/umap_AT2_markers.png
+   ✓ AT2 markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures/umap_Proliferating_markers.png
+   ✓ Proliferating markers UMAP saved
+
+   Generating marker Dotplot...
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures/dotplot__epithelial_markers.png
+   ✓ Dotplot saved (showing 50 genes)
+
+   Generating expression heatmap...
+   ✓ Heatmap saved
+
+   Generating batch-wise UMAP...
+   ✓ Batch-wise UMAP saved
+
+   All figures saved to: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures
+
+Backfilling results to full dataset...
+   ✓ Results backfilled
+
+Saving integrated AnnData...
+   Using gzip compression...
+   Saved: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/epithelial_bbknn_integrated.h5ad (11.10 GB)
+
+======================================================================
+Step 8: Generate Summary Report
+======================================================================
+
+Report saved to: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/analysis_summary.txt
+
+======================================================================
+Epithelial Cell Analysis - BBKNN Integration Summary
+======================================================================
+Generated: 2025-12-01 01:30:47
+Processing time: 8747.0 seconds (145.8 minutes)
+
+[ Data Overview ]
+  Cells: 278,930
+  Genes: 53,973
+
+[ Batch Distribution (key: dataset) ]
+  Banovich_Kropski_2020: 9,139 cells (3.3%)
+  Barbry_Leroy_2020: 25,821 cells (9.3%)
+  Guanrui_Liao_2025: 3,998 cells (1.4%)
+  Jain_Misharin_2021_10Xv1: 8,596 cells (3.1%)
+  Jain_Misharin_2021_10Xv2: 19,972 cells (7.2%)
+  Jennifer_P_Wang_2021: 1,166 cells (0.4%)
+  Ji_Hoon_Ahn_2021: 15,350 cells (5.5%)
+  Kerstin_B_Meyer_2021: 62,054 cells (22.2%)
+  Lafyatis_Rojas_2019_10Xv1: 166 cells (0.1%)
+  Lafyatis_Rojas_2019_10Xv2: 679 cells (0.2%)
+  Maya_E_Kotas_2022: 45,673 cells (16.4%)
+  Meyer_2019: 1,891 cells (0.7%)
+  Misharin_2021: 9,040 cells (3.2%)
+  Misharin_Budinger_2018: 9,929 cells (3.6%)
+  Nawijn_2021: 25,651 cells (9.2%)
+  Ordovas_Montanes_2018: 5,425 cells (1.9%)
+  Seibold_2020_10Xv2: 3,910 cells (1.4%)
+  Seibold_2020_10Xv3: 3,710 cells (1.3%)
+  Tine_Wils_2024: 5,559 cells (2.0%)
+  Waradon_Sungnak_2020: 6,338 cells (2.3%)
+  Weiqing_Wang_2022: 12,507 cells (4.5%)
+  Xinyu_Xie_2024: 2,356 cells (0.8%)
+
+[ Epithelial Marker Genes ]
+  Total markers: 67
+  Available: 67 (100.0%)
+
+[ Multi-resolution Clustering Results ]
+  Resolution 1.2: 21 clusters
+  Resolution 1.6: 27 clusters
+  Resolution 2.0: 29 clusters (default)
+  Resolution 2.4: 38 clusters
+  Resolution 2.8: 39 clusters
+
+[ BBKNN Configuration ]
+  neighbors_within_batch: 3
+  n_pcs: 50
+  batch_key: dataset
+  High variable genes: True (n=3000)
+
+[ Output Files ]
+  - Data: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/epithelial_bbknn_integrated.h5ad
+  - Figures: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures*.png
+  - Markers: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/cluster_markers.csv
+
+======================================================================
+Analysis completed successfully
+======================================================================
+
+======================================================================
+✓ All analyses completed successfully
+======================================================================
+
+Output directory: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized
+Data: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/epithelial_bbknn_integrated.h5ad (11.10 GB)
+Figures: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures*.png
+Markers: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/cluster_markers.csv
+
+Total time: 8747.0 seconds (145.8 minutes)
+
+📊 Key Information:
+   Cells: 278,930
+   Available markers: 67/67
+   Default clusters: 29
+
+🔧 BBKNN Parameters:
+   neighbors_within_batch: 3
+   n_pcs: 50
+   HVG: 3000
+
+Harmony configuration:
+   batch_key: dataset
+   max_iter: 20
+
+   Key parameters:
+   theta (diversity penalty): 1.0
+   lambda (ridge penalty): 5.0
+   sigma (cluster width): 0.1
+   nclust (num clusters): None
+   tau (overclustering protection): 0
+harmonypy version: 0.0.10
+
+======================================================================
+Harmony Batch Correction Pipeline
+======================================================================
+
+Created Harmony working copy:
+   Cells: 278,930
+   Genes: 3,013
+   PCA components: 50
+
+Running Harmony batch correction...
+   Correcting for: dataset
+   theta=1.0, lambda=5.0
+2025-12-01 01:30:53,903 - harmonypy - INFO - Computing initial centroids with sklearn.KMeans...
+2025-12-01 01:34:14,872 - harmonypy - INFO - sklearn.KMeans initialization complete.
+2025-12-01 01:34:16,461 - harmonypy - INFO - Iteration 1 of 20
+2025-12-01 01:38:11,526 - harmonypy - INFO - Iteration 2 of 20
+2025-12-01 01:41:58,190 - harmonypy - INFO - Iteration 3 of 20
+2025-12-01 01:45:48,047 - harmonypy - INFO - Iteration 4 of 20
+2025-12-01 01:49:32,269 - harmonypy - INFO - Iteration 5 of 20
+2025-12-01 01:53:15,943 - harmonypy - INFO - Converged after 5 iterations
+
+   Harmony complete, time elapsed: 1342.3 seconds
+   Corrected PCs stored in: .obsm['X_pca_harmony']
+
+   Final parameters used:
+   - theta: 1.0
+   - lambda: 5.0
+   - sigma: 0.1
+   - tau: 0
+
+Computing neighbor graph on Harmony-corrected PCs...
+   Neighbor graph computed
+
+Running UMAP on Harmony PCs (min_dist=0.5)...
+   UMAP complete
+
+Running multi-resolution Leiden clustering on Harmony data...
+   Resolution list: [1.2, 1.6, 2.0, 2.4, 2.8]
+   Resolution 1.2: 57 clusters
+   Resolution 1.6: 59 clusters
+   Resolution 2.0: 63 clusters
+   Resolution 2.4: 76 clusters
+   Resolution 2.8: 82 clusters
+
+   Default clustering: leiden_harmony_res2.0
+
+======================================================================
+Comparison: BBKNN vs Harmony
+======================================================================
+
+Clustering results (resolution=2.0):
+   BBKNN:   29 clusters
+   Harmony: 63 clusters
+
+Batch distribution across clusters:
+
+BBKNN:
+dataset       Banovich_Kropski_2020  ...  Xinyu_Xie_2024
+leiden_bbknn                         ...                
+0                             0.001  ...           0.001
+1                             0.001  ...           0.001
+2                             0.000  ...           0.000
+3                             0.000  ...           0.001
+4                             0.048  ...           0.000
+5                             0.000  ...           0.000
+6                             0.001  ...           0.000
+7                             0.000  ...           0.000
+8                             0.227  ...           0.000
+9                             0.001  ...           0.001
+10                            0.000  ...           0.000
+11                            0.000  ...           0.011
+12                            0.000  ...           0.001
+13                            0.000  ...           0.000
+14                            0.254  ...           0.000
+15                            0.000  ...           0.007
+16                            0.001  ...           0.000
+17                            0.079  ...           0.000
+18                            0.001  ...           0.008
+19                            0.001  ...           0.367
+20                            0.003  ...           0.001
+21                            0.000  ...           0.000
+22                            0.001  ...           0.000
+23                            0.000  ...           0.001
+24                            0.001  ...           0.004
+25                            0.574  ...           0.000
+26                            0.000  ...           0.000
+27                            0.000  ...           0.002
+28                            0.218  ...           0.000
+
+[29 rows x 22 columns]
+
+Harmony:
+dataset         Banovich_Kropski_2020  ...  Xinyu_Xie_2024
+leiden_harmony                         ...                
+0                               0.002  ...           0.006
+1                               0.165  ...           0.026
+2                               0.143  ...           0.031
+3                               0.078  ...           0.000
+4                               0.002  ...           0.003
+...                               ...  ...             ...
+58                              0.000  ...           0.000
+59                              0.874  ...           0.000
+60                              0.000  ...           0.000
+61                              0.000  ...           0.000
+62                              0.000  ...           0.000
+
+[63 rows x 22 columns]
+
+Generating Harmony visualization...
+   ✓ Comparison plot saved to /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony
+
+Generating Harmony multi-resolution clustering plots...
+   ✓ Multi-resolution plot saved
+
+Generating Harmony marker expression UMAPs...
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony/umap_harmony_Basal_markers.png
+   ✓ Basal markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony/umap_harmony_Secretory_markers.png
+   ✓ Secretory markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony/umap_harmony_Ciliated_markers.png
+   ✓ Ciliated markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony/umap_harmony_Goblet_markers.png
+   ✓ Goblet markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony/umap_harmony_Tuft_markers.png
+   ✓ Tuft markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony/umap_harmony_Ionocyte_markers.png
+   ✓ Ionocyte markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony/umap_harmony_AT1_markers.png
+   ✓ AT1 markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony/umap_harmony_AT2_markers.png
+   ✓ AT2 markers UMAP saved
+WARNING: saving figure to file /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony/umap_harmony_Proliferating_markers.png
+   ✓ Proliferating markers UMAP saved
+
+Generating Harmony batch-wise UMAP...
+   ✓ Batch-wise UMAP saved
+
+Backfilling Harmony results to full dataset...
+   ✓ Harmony results backfilled
+
+Saving Harmony-integrated AnnData...
+   Using gzip compression...
+   Saved: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/epithelial_harmony_integrated.h5ad (11.15 GB)
+
+======================================================================
+Harmony Integration Summary
+======================================================================
+
+Harmony report saved to: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/harmony_summary.txt
+
+======================================================================
+Epithelial Cell Analysis - Harmony Integration Summary
+======================================================================
+Generated: 2025-12-01 03:43:10
+Harmony processing time: 1342.3 seconds
+
+[ Harmony Configuration ]
+  batch_key: dataset
+  max_iter: 20
+  n_pcs: 50
+
+[ Harmony Parameters ]
+  theta (diversity penalty): 1.0
+  lambda (ridge penalty): 5.0
+  sigma (cluster width): 0.1
+  tau (overclustering protection): 0
+
+[ Clustering Results ]
+  Default resolution: 2.0
+  Harmony clusters: 63
+  BBKNN clusters: 29
+
+[ Parameter Guidelines ]
+  theta: Higher = more aggressive correction (try 2-5)
+  lambda: Higher = more conservative (try 0.5-5)
+  sigma: Typically 0.1, adjust if convergence issues
+
+[ Output Files ]
+  - Data: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/epithelial_harmony_integrated.h5ad
+  - Figures: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony/*.png
+
+======================================================================
+Harmony analysis completed successfully
+======================================================================
+
+======================================================================
+✓ Complete Pipeline (BBKNN + Harmony) Finished
+======================================================================
+
+📊 Final Results Summary:
+   Total cells: 278,930
+   Total genes: 53,973
+   Available markers: 67/67
+
+   BBKNN clusters (res=2.0): 29
+   Harmony clusters (res=2.0): 63
+
+⏱️  Processing Times:
+   BBKNN integration: 383.0 seconds
+   Harmony integration: 1342.3 seconds
+   Total pipeline: 16689.3 seconds (278.2 minutes)
+
+💾 Output Files:
+   BBKNN results: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/epithelial_bbknn_integrated.h5ad
+   Harmony results: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/epithelial_harmony_integrated.h5ad
+   BBKNN figures: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures
+   Harmony figures: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/figures_harmony
+
+📝 Recommendation:
+   Compare the batch mixing and clustering quality between BBKNN and Harmony
+   Check batch distribution plots and UMAP visualizations
+   Choose the method that best preserves biological signal while removing batch effects
+
+cNMF already installed
+cNMF Configuration:
+   Output directory: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/cnmf_results
+   Components to test: [10, 15, 20, 25, 30]
+   Iterations per K: 100
+   HVG count: 2000
+   Density threshold: 0.1
+
+======================================================================
+Preparing data for cNMF
+======================================================================
+   Using counts from layers['counts']
+   Saved raw counts to: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/cnmf_results/epithelial_raw_counts.h5ad
+   Shape: 278930 cells × 53973 genes
+
+======================================================================
+cNMF Analysis - WITHOUT Batch Correction
+======================================================================
+
+Step 1: Prepare...
+   ✓ Preparation complete
+
+Step 2: Factorize (this may take a while)...
+   Running 100 iterations for each K in [10, 15, 20, 25, 30]
+[Worker 0]. Starting task 0.
+[Worker 0]. Starting task 1.
+[Worker 0]. Starting task 2.
+[Worker 0]. Starting task 3.
+[Worker 0]. Starting task 4.
+[Worker 0]. Starting task 5.
+[Worker 0]. Starting task 6.
+[Worker 0]. Starting task 7.
+[Worker 0]. Starting task 8.
+[Worker 0]. Starting task 9.
+[Worker 0]. Starting task 10.
+[Worker 0]. Starting task 11.
+[Worker 0]. Starting task 12.
+[Worker 0]. Starting task 13.
+[Worker 0]. Starting task 14.
+[Worker 0]. Starting task 15.
+[Worker 0]. Starting task 16.
+[Worker 0]. Starting task 17.
+[Worker 0]. Starting task 18.
+[Worker 0]. Starting task 19.
+[Worker 0]. Starting task 20.
+[Worker 0]. Starting task 21.
+[Worker 0]. Starting task 22.
+[Worker 0]. Starting task 23.
+[Worker 0]. Starting task 24.
+[Worker 0]. Starting task 25.
+[Worker 0]. Starting task 26.
+[Worker 0]. Starting task 27.
+[Worker 0]. Starting task 28.
+[Worker 0]. Starting task 29.
+[Worker 0]. Starting task 30.
+[Worker 0]. Starting task 31.
+[Worker 0]. Starting task 32.
+[Worker 0]. Starting task 33.
+[Worker 0]. Starting task 34.
+[Worker 0]. Starting task 35.
+[Worker 0]. Starting task 36.
+[Worker 0]. Starting task 37.
+[Worker 0]. Starting task 38.
+[Worker 0]. Starting task 39.
+[Worker 0]. Starting task 40.
+[Worker 0]. Starting task 41.
+[Worker 0]. Starting task 42.
+[Worker 0]. Starting task 43.
+[Worker 0]. Starting task 44.
+[Worker 0]. Starting task 45.
+[Worker 0]. Starting task 46.
+[Worker 0]. Starting task 47.
+[Worker 0]. Starting task 48.
+[Worker 0]. Starting task 49.
+[Worker 0]. Starting task 50.
+[Worker 0]. Starting task 51.
+[Worker 0]. Starting task 52.
+[Worker 0]. Starting task 53.
+[Worker 0]. Starting task 54.
+[Worker 0]. Starting task 55.
+[Worker 0]. Starting task 56.
+[Worker 0]. Starting task 57.
+[Worker 0]. Starting task 58.
+[Worker 0]. Starting task 59.
+[Worker 0]. Starting task 60.
+[Worker 0]. Starting task 61.
+[Worker 0]. Starting task 62.
+[Worker 0]. Starting task 63.
+[Worker 0]. Starting task 64.
+[Worker 0]. Starting task 65.
+[Worker 0]. Starting task 66.
+[Worker 0]. Starting task 67.
+[Worker 0]. Starting task 68.
+[Worker 0]. Starting task 69.
+[Worker 0]. Starting task 70.
+[Worker 0]. Starting task 71.
+[Worker 0]. Starting task 72.
+[Worker 0]. Starting task 73.
+[Worker 0]. Starting task 74.
+[Worker 0]. Starting task 75.
+[Worker 0]. Starting task 76.
+[Worker 0]. Starting task 77.
+[Worker 0]. Starting task 78.
+[Worker 0]. Starting task 79.
+[Worker 0]. Starting task 80.
+[Worker 0]. Starting task 81.
+[Worker 0]. Starting task 82.
+[Worker 0]. Starting task 83.
+[Worker 0]. Starting task 84.
+[Worker 0]. Starting task 85.
+[Worker 0]. Starting task 86.
+[Worker 0]. Starting task 87.
+[Worker 0]. Starting task 88.
+[Worker 0]. Starting task 89.
+[Worker 0]. Starting task 90.
+[Worker 0]. Starting task 91.
+[Worker 0]. Starting task 92.
+[Worker 0]. Starting task 93.
+[Worker 0]. Starting task 94.
+[Worker 0]. Starting task 95.
+[Worker 0]. Starting task 96.
+[Worker 0]. Starting task 97.
+[Worker 0]. Starting task 98.
+[Worker 0]. Starting task 99.
+[Worker 0]. Starting task 100.
+[Worker 0]. Starting task 101.
+[Worker 0]. Starting task 102.
+[Worker 0]. Starting task 103.
+[Worker 0]. Starting task 104.
+[Worker 0]. Starting task 105.
+[Worker 0]. Starting task 106.
+[Worker 0]. Starting task 107.
+[Worker 0]. Starting task 108.
+[Worker 0]. Starting task 109.
+[Worker 0]. Starting task 110.
+[Worker 0]. Starting task 111.
+[Worker 0]. Starting task 112.
+[Worker 0]. Starting task 113.
+[Worker 0]. Starting task 114.
+[Worker 0]. Starting task 115.
+[Worker 0]. Starting task 116.
+[Worker 0]. Starting task 117.
+[Worker 0]. Starting task 118.
+[Worker 0]. Starting task 119.
+[Worker 0]. Starting task 120.
+[Worker 0]. Starting task 121.
+[Worker 0]. Starting task 122.
+[Worker 0]. Starting task 123.
+[Worker 0]. Starting task 124.
+[Worker 0]. Starting task 125.
+[Worker 0]. Starting task 126.
+[Worker 0]. Starting task 127.
+[Worker 0]. Starting task 128.
+[Worker 0]. Starting task 129.
+[Worker 0]. Starting task 130.
+[Worker 0]. Starting task 131.
+[Worker 0]. Starting task 132.
+[Worker 0]. Starting task 133.
+[Worker 0]. Starting task 134.
+[Worker 0]. Starting task 135.
+[Worker 0]. Starting task 136.
+[Worker 0]. Starting task 137.
+[Worker 0]. Starting task 138.
+[Worker 0]. Starting task 139.
+[Worker 0]. Starting task 140.
+[Worker 0]. Starting task 141.
+[Worker 0]. Starting task 142.
+[Worker 0]. Starting task 143.
+[Worker 0]. Starting task 144.
+[Worker 0]. Starting task 145.
+[Worker 0]. Starting task 146.
+[Worker 0]. Starting task 147.
+[Worker 0]. Starting task 148.
+[Worker 0]. Starting task 149.
+[Worker 0]. Starting task 150.
+[Worker 0]. Starting task 151.
+[Worker 0]. Starting task 152.
+[Worker 0]. Starting task 153.
+[Worker 0]. Starting task 154.
+[Worker 0]. Starting task 155.
+[Worker 0]. Starting task 156.
+[Worker 0]. Starting task 157.
+[Worker 0]. Starting task 158.
+[Worker 0]. Starting task 159.
+[Worker 0]. Starting task 160.
+[Worker 0]. Starting task 161.
+[Worker 0]. Starting task 162.
+[Worker 0]. Starting task 163.
+[Worker 0]. Starting task 164.
+[Worker 0]. Starting task 165.
+[Worker 0]. Starting task 166.
+[Worker 0]. Starting task 167.
+[Worker 0]. Starting task 168.
+[Worker 0]. Starting task 169.
+[Worker 0]. Starting task 170.
+[Worker 0]. Starting task 171.
+[Worker 0]. Starting task 172.
+[Worker 0]. Starting task 173.
+[Worker 0]. Starting task 174.
+[Worker 0]. Starting task 175.
+[Worker 0]. Starting task 176.
+[Worker 0]. Starting task 177.
+[Worker 0]. Starting task 178.
+[Worker 0]. Starting task 179.
+[Worker 0]. Starting task 180.
+[Worker 0]. Starting task 181.
+[Worker 0]. Starting task 182.
+[Worker 0]. Starting task 183.
+[Worker 0]. Starting task 184.
+[Worker 0]. Starting task 185.
+[Worker 0]. Starting task 186.
+[Worker 0]. Starting task 187.
+[Worker 0]. Starting task 188.
+[Worker 0]. Starting task 189.
+[Worker 0]. Starting task 190.
+[Worker 0]. Starting task 191.
+[Worker 0]. Starting task 192.
+[Worker 0]. Starting task 193.
+[Worker 0]. Starting task 194.
+[Worker 0]. Starting task 195.
+[Worker 0]. Starting task 196.
+[Worker 0]. Starting task 197.
+[Worker 0]. Starting task 198.
+[Worker 0]. Starting task 199.
+[Worker 0]. Starting task 200.
+[Worker 0]. Starting task 201.
+[Worker 0]. Starting task 202.
+[Worker 0]. Starting task 203.
+[Worker 0]. Starting task 204.
+[Worker 0]. Starting task 205.
+[Worker 0]. Starting task 206.
+[Worker 0]. Starting task 207.
+[Worker 0]. Starting task 208.
+[Worker 0]. Starting task 209.
+[Worker 0]. Starting task 210.
+[Worker 0]. Starting task 211.
+[Worker 0]. Starting task 212.
+[Worker 0]. Starting task 213.
+[Worker 0]. Starting task 214.
+[Worker 0]. Starting task 215.
+[Worker 0]. Starting task 216.
+[Worker 0]. Starting task 217.
+[Worker 0]. Starting task 218.
+[Worker 0]. Starting task 219.
+[Worker 0]. Starting task 220.
+[Worker 0]. Starting task 221.
+[Worker 0]. Starting task 222.
+[Worker 0]. Starting task 223.
+[Worker 0]. Starting task 224.
+[Worker 0]. Starting task 225.
+[Worker 0]. Starting task 226.
+[Worker 0]. Starting task 227.
+[Worker 0]. Starting task 228.
+[Worker 0]. Starting task 229.
+[Worker 0]. Starting task 230.
+[Worker 0]. Starting task 231.
+[Worker 0]. Starting task 232.
+[Worker 0]. Starting task 233.
+[Worker 0]. Starting task 234.
+[Worker 0]. Starting task 235.
+[Worker 0]. Starting task 236.
+[Worker 0]. Starting task 237.
+[Worker 0]. Starting task 238.
+[Worker 0]. Starting task 239.
+[Worker 0]. Starting task 240.
+[Worker 0]. Starting task 241.
+[Worker 0]. Starting task 242.
+[Worker 0]. Starting task 243.
+[Worker 0]. Starting task 244.
+[Worker 0]. Starting task 245.
+[Worker 0]. Starting task 246.
+[Worker 0]. Starting task 247.
+[Worker 0]. Starting task 248.
+[Worker 0]. Starting task 249.
+[Worker 0]. Starting task 250.
+[Worker 0]. Starting task 251.
+[Worker 0]. Starting task 252.
+[Worker 0]. Starting task 253.
+[Worker 0]. Starting task 254.
+[Worker 0]. Starting task 255.
+[Worker 0]. Starting task 256.
+[Worker 0]. Starting task 257.
+[Worker 0]. Starting task 258.
+[Worker 0]. Starting task 259.
+[Worker 0]. Starting task 260.
+[Worker 0]. Starting task 261.
+[Worker 0]. Starting task 262.
+[Worker 0]. Starting task 263.
+[Worker 0]. Starting task 264.
+[Worker 0]. Starting task 265.
+[Worker 0]. Starting task 266.
+[Worker 0]. Starting task 267.
+[Worker 0]. Starting task 268.
+[Worker 0]. Starting task 269.
+[Worker 0]. Starting task 270.
+[Worker 0]. Starting task 271.
+[Worker 0]. Starting task 272.
+[Worker 0]. Starting task 273.
+[Worker 0]. Starting task 274.
+[Worker 0]. Starting task 275.
+[Worker 0]. Starting task 276.
+[Worker 0]. Starting task 277.
+[Worker 0]. Starting task 278.
+[Worker 0]. Starting task 279.
+[Worker 0]. Starting task 280.
+[Worker 0]. Starting task 281.
+[Worker 0]. Starting task 282.
+[Worker 0]. Starting task 283.
+[Worker 0]. Starting task 284.
+[Worker 0]. Starting task 285.
+[Worker 0]. Starting task 286.
+[Worker 0]. Starting task 287.
+[Worker 0]. Starting task 288.
+[Worker 0]. Starting task 289.
+[Worker 0]. Starting task 290.
+[Worker 0]. Starting task 291.
+[Worker 0]. Starting task 292.
+[Worker 0]. Starting task 293.
+[Worker 0]. Starting task 294.
+[Worker 0]. Starting task 295.
+[Worker 0]. Starting task 296.
+[Worker 0]. Starting task 297.
+[Worker 0]. Starting task 298.
+[Worker 0]. Starting task 299.
+[Worker 0]. Starting task 300.
+[Worker 0]. Starting task 301.
+[Worker 0]. Starting task 302.
+[Worker 0]. Starting task 303.
+[Worker 0]. Starting task 304.
+[Worker 0]. Starting task 305.
+[Worker 0]. Starting task 306.
+[Worker 0]. Starting task 307.
+[Worker 0]. Starting task 308.
+[Worker 0]. Starting task 309.
+[Worker 0]. Starting task 310.
+[Worker 0]. Starting task 311.
+[Worker 0]. Starting task 312.
+[Worker 0]. Starting task 313.
+[Worker 0]. Starting task 314.
+[Worker 0]. Starting task 315.
+[Worker 0]. Starting task 316.
+[Worker 0]. Starting task 317.
+[Worker 0]. Starting task 318.
+[Worker 0]. Starting task 319.
+[Worker 0]. Starting task 320.
+[Worker 0]. Starting task 321.
+[Worker 0]. Starting task 322.
+[Worker 0]. Starting task 323.
+[Worker 0]. Starting task 324.
+[Worker 0]. Starting task 325.
+[Worker 0]. Starting task 326.
+[Worker 0]. Starting task 327.
+[Worker 0]. Starting task 328.
+[Worker 0]. Starting task 329.
+[Worker 0]. Starting task 330.
+[Worker 0]. Starting task 331.
+[Worker 0]. Starting task 332.
+[Worker 0]. Starting task 333.
+[Worker 0]. Starting task 334.
+[Worker 0]. Starting task 335.
+[Worker 0]. Starting task 336.
+[Worker 0]. Starting task 337.
+[Worker 0]. Starting task 338.
+[Worker 0]. Starting task 339.
+[Worker 0]. Starting task 340.
+[Worker 0]. Starting task 341.
+[Worker 0]. Starting task 342.
+[Worker 0]. Starting task 343.
+[Worker 0]. Starting task 344.
+[Worker 0]. Starting task 345.
+[Worker 0]. Starting task 346.
+[Worker 0]. Starting task 347.
+[Worker 0]. Starting task 348.
+[Worker 0]. Starting task 349.
+[Worker 0]. Starting task 350.
+[Worker 0]. Starting task 351.
+[Worker 0]. Starting task 352.
+[Worker 0]. Starting task 353.
+[Worker 0]. Starting task 354.
+[Worker 0]. Starting task 355.
+[Worker 0]. Starting task 356.
+[Worker 0]. Starting task 357.
+[Worker 0]. Starting task 358.
+[Worker 0]. Starting task 359.
+[Worker 0]. Starting task 360.
+[Worker 0]. Starting task 361.
+[Worker 0]. Starting task 362.
+[Worker 0]. Starting task 363.
+[Worker 0]. Starting task 364.
+[Worker 0]. Starting task 365.
+[Worker 0]. Starting task 366.
+[Worker 0]. Starting task 367.
+[Worker 0]. Starting task 368.
+[Worker 0]. Starting task 369.
+[Worker 0]. Starting task 370.
+[Worker 0]. Starting task 371.
+[Worker 0]. Starting task 372.
+[Worker 0]. Starting task 373.
+[Worker 0]. Starting task 374.
+[Worker 0]. Starting task 375.
+[Worker 0]. Starting task 376.
+[Worker 0]. Starting task 377.
+[Worker 0]. Starting task 378.
+[Worker 0]. Starting task 379.
+[Worker 0]. Starting task 380.
+[Worker 0]. Starting task 381.
+[Worker 0]. Starting task 382.
+[Worker 0]. Starting task 383.
+[Worker 0]. Starting task 384.
+[Worker 0]. Starting task 385.
+[Worker 0]. Starting task 386.
+[Worker 0]. Starting task 387.
+[Worker 0]. Starting task 388.
+[Worker 0]. Starting task 389.
+[Worker 0]. Starting task 390.
+[Worker 0]. Starting task 391.
+[Worker 0]. Starting task 392.
+[Worker 0]. Starting task 393.
+[Worker 0]. Starting task 394.
+[Worker 0]. Starting task 395.
+[Worker 0]. Starting task 396.
+[Worker 0]. Starting task 397.
+[Worker 0]. Starting task 398.
+[Worker 0]. Starting task 399.
+[Worker 0]. Starting task 400.
+[Worker 0]. Starting task 401.
+[Worker 0]. Starting task 402.
+[Worker 0]. Starting task 403.
+[Worker 0]. Starting task 404.
+[Worker 0]. Starting task 405.
+[Worker 0]. Starting task 406.
+[Worker 0]. Starting task 407.
+[Worker 0]. Starting task 408.
+[Worker 0]. Starting task 409.
+[Worker 0]. Starting task 410.
+[Worker 0]. Starting task 411.
+[Worker 0]. Starting task 412.
+[Worker 0]. Starting task 413.
+[Worker 0]. Starting task 414.
+[Worker 0]. Starting task 415.
+[Worker 0]. Starting task 416.
+[Worker 0]. Starting task 417.
+[Worker 0]. Starting task 418.
+[Worker 0]. Starting task 419.
+[Worker 0]. Starting task 420.
+[Worker 0]. Starting task 421.
+[Worker 0]. Starting task 422.
+[Worker 0]. Starting task 423.
+[Worker 0]. Starting task 424.
+[Worker 0]. Starting task 425.
+[Worker 0]. Starting task 426.
+[Worker 0]. Starting task 427.
+[Worker 0]. Starting task 428.
+[Worker 0]. Starting task 429.
+[Worker 0]. Starting task 430.
+[Worker 0]. Starting task 431.
+[Worker 0]. Starting task 432.
+[Worker 0]. Starting task 433.
+[Worker 0]. Starting task 434.
+[Worker 0]. Starting task 435.
+[Worker 0]. Starting task 436.
+[Worker 0]. Starting task 437.
+[Worker 0]. Starting task 438.
+[Worker 0]. Starting task 439.
+[Worker 0]. Starting task 440.
+[Worker 0]. Starting task 441.
+[Worker 0]. Starting task 442.
+[Worker 0]. Starting task 443.
+[Worker 0]. Starting task 444.
+[Worker 0]. Starting task 445.
+[Worker 0]. Starting task 446.
+[Worker 0]. Starting task 447.
+[Worker 0]. Starting task 448.
+[Worker 0]. Starting task 449.
+[Worker 0]. Starting task 450.
+[Worker 0]. Starting task 451.
+[Worker 0]. Starting task 452.
+[Worker 0]. Starting task 453.
+[Worker 0]. Starting task 454.
+[Worker 0]. Starting task 455.
+[Worker 0]. Starting task 456.
+[Worker 0]. Starting task 457.
+[Worker 0]. Starting task 458.
+[Worker 0]. Starting task 459.
+[Worker 0]. Starting task 460.
+[Worker 0]. Starting task 461.
+[Worker 0]. Starting task 462.
+[Worker 0]. Starting task 463.
+[Worker 0]. Starting task 464.
+[Worker 0]. Starting task 465.
+[Worker 0]. Starting task 466.
+[Worker 0]. Starting task 467.
+[Worker 0]. Starting task 468.
+[Worker 0]. Starting task 469.
+[Worker 0]. Starting task 470.
+[Worker 0]. Starting task 471.
+[Worker 0]. Starting task 472.
+[Worker 0]. Starting task 473.
+[Worker 0]. Starting task 474.
+[Worker 0]. Starting task 475.
+[Worker 0]. Starting task 476.
+[Worker 0]. Starting task 477.
+[Worker 0]. Starting task 478.
+[Worker 0]. Starting task 479.
+[Worker 0]. Starting task 480.
+[Worker 0]. Starting task 481.
+[Worker 0]. Starting task 482.
+[Worker 0]. Starting task 483.
+[Worker 0]. Starting task 484.
+[Worker 0]. Starting task 485.
+[Worker 0]. Starting task 486.
+[Worker 0]. Starting task 487.
+[Worker 0]. Starting task 488.
+[Worker 0]. Starting task 489.
+[Worker 0]. Starting task 490.
+[Worker 0]. Starting task 491.
+[Worker 0]. Starting task 492.
+[Worker 0]. Starting task 493.
+[Worker 0]. Starting task 494.
+[Worker 0]. Starting task 495.
+[Worker 0]. Starting task 496.
+[Worker 0]. Starting task 497.
+[Worker 0]. Starting task 498.
+[Worker 0]. Starting task 499.
+   ✓ Factorization complete (60723.2 seconds)
+
+Step 3: Combine results...
+Combining factorizations for k=10.
+Combining factorizations for k=15.
+Combining factorizations for k=20.
+Combining factorizations for k=25.
+Combining factorizations for k=30.
+   ✓ Results combined
+
+Step 4: Consensus clustering for each K...
+
+   Processing K=10...
+   ✓ K=10 consensus complete
+
+   Processing K=15...
+   ✓ K=15 consensus complete
+
+   Processing K=20...
+   ✓ K=20 consensus complete
+
+   Processing K=25...
+   ✓ K=25 consensus complete
+
+   Processing K=30...
+   ✓ K=30 consensus complete
+
+Loading cNMF results for K=15 (no batch correction)...
+   Usage matrix shape: (278930, 15)
+   Spectra shape: (53973, 15)
+
+   First few cells:
+                                                          1   ...        15
+merged_seurat_Jennifer_P_Wang_2021_HC4201_GACCG...  0.000000  ...  0.000000
+merged_seurat_Jennifer_P_Wang_2021_HC4202_CAACA...  0.000000  ...  0.000000
+merged_seurat_Jennifer_P_Wang_2021_HC4202_TTACA...  0.027925  ...  0.028966
+merged_seurat_Jennifer_P_Wang_2021_HC4203_GAAGG...  0.211138  ...  0.153226
+merged_seurat_Jennifer_P_Wang_2021_HC4204_GCAGC...  0.000000  ...  0.028157
+
+[5 rows x 15 columns]
+
+Visualizing GEP usage by batch (uncorrected data)...
+   ✓ Plot saved
+
+   Look for GEPs that are batch-specific (different distributions across batches)
+
+======================================================================
+Preparing Harmony-corrected data for cNMF
+======================================================================
+
+Note: Creating corrected counts from Harmony PCs...
+This is a simplified approach - ideally use harmonypy's full preprocessing pipeline
+   Corrected HVG data saved: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/cnmf_results/epithelial_harmony_corrected_hvg.h5ad
+   Shape: 278930 cells × 3013 genes
+   TP10K data saved: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/cnmf_results/epithelial_tp10k.h5ad
+   Shape: 278930 cells × 53973 genes
+   HVG list saved: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/output_optimized/cnmf_results/harmony_hvgs.txt
+   Number of HVGs: 3013
+
+======================================================================
+cNMF Analysis - WITH Harmony Batch Correction
+======================================================================
+
+Step 1: Prepare...
+   ✓ Preparation complete
+
+Step 2: Factorize (this may take a while)...
+[Worker 0]. Starting task 0.
+Traceback (most recent call last):
+  File "/home/h2048/script/py/bbknn_epithelial_v1_3_linear_harmony_cNMF.py", line 1876, in <module>
+    cnmf_harmony.factorize(worker_i=0, total_workers=1)
+  File "/home/h2048/miniconda3/envs/bbknn_env/lib/python3.9/site-packages/cnmf/cnmf.py", line 741, in factorize
+    (spectra, usages) = self._nmf(norm_counts.X, _nmf_kwargs)
+  File "/home/h2048/miniconda3/envs/bbknn_env/lib/python3.9/site-packages/cnmf/cnmf.py", line 672, in _nmf
+    (usages, spectra, niter) = non_negative_factorization(X, **nmf_kwargs)
+  File "/home/h2048/miniconda3/envs/bbknn_env/lib/python3.9/site-packages/sklearn/utils/_param_validation.py", line 214, in wrapper
+    return func(*args, **kwargs)
+  File "/home/h2048/miniconda3/envs/bbknn_env/lib/python3.9/site-packages/sklearn/decomposition/_nmf.py", line 1122, in non_negative_factorization
+    W, H, n_iter = est._fit_transform(X, W=W, H=H, update_H=update_H)
+  File "/home/h2048/miniconda3/envs/bbknn_env/lib/python3.9/site-packages/sklearn/decomposition/_nmf.py", line 1657, in _fit_transform
+    check_non_negative(X, "NMF (input X)")
+  File "/home/h2048/miniconda3/envs/bbknn_env/lib/python3.9/site-packages/sklearn/utils/validation.py", line 1489, in check_non_negative
+    raise ValueError("Negative values in data passed to %s" % whom)
+ValueError: Negative values in data passed to NMF (input X)
