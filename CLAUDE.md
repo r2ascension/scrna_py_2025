@@ -1,296 +1,364 @@
-# CLAUDE.md - Single-Cell RNA-seq Analysis Repository
+# CLAUDE.md
 
-This file provides guidance to Claude Code when working with this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Repository Overview
 
-This is a **single-cell RNA sequencing (scRNA-seq) analysis repository** focused on immune cell analysis in nasal/respiratory tissues, particularly **Chronic Rhinosinusitis with Nasal Polyps (CRSwNP)**.
+This is a **single-cell RNA-seq analysis pipeline** repository for lung tissue data, implementing state-of-the-art computational biology workflows using Python/scanpy/scvi-tools ecosystem. The primary focus is on **cell type annotation and batch correction** for large-scale single-cell datasets.
 
-The repository implements a **dual-language workflow**:
-- **Python** (`py/`): Deep learning-based integration and annotation using scanpy/scvi-tools
-- **R** (`R/`): Statistical analysis, QC, and interpretation using Seurat v5
+## Core Pipeline Architecture
 
----
+### Three-Stage Deep Learning Pipeline Pattern
 
-## Quick Navigation
+All major analysis scripts follow this standardized architecture:
 
-| Folder | Purpose | Key Technologies |
-|--------|---------|------------------|
-| `py/` | Batch correction, cell annotation, visualization | scVI, scANVI, CellTypist, BBKNN, scanpy |
-| `R/` | QC pipeline, statistical analysis, DE, trajectory | Seurat v5, Monocle3, DESeq2, MASC |
+1. **scVI (Batch Correction)** - Variational autoencoder for batch effect removal
+   - Trains on raw UMI counts (integer values, NOT normalized)
+   - Generates latent space (`X_scvi`) for batch-corrected representation
+   - CRITICAL: Always use `layer='counts'` or `layers['counts']`
 
----
+2. **CellTypist (Automated Annotation)** - Machine learning-based cell type classification
+   - Requires log-normalized counts (NOT raw counts)
+   - Expects gene symbols (NOT ENSEMBL IDs) for Human_Lung_Atlas model
+   - Produces `predicted_labels`, `majority_voting`, and confidence scores
 
-## Python Pipeline (`py/`)
-
-### Core Three-Stage Architecture
-
-All major analysis scripts follow this pattern:
-
-1. **scVI** - Variational autoencoder for batch effect removal
-   - Uses raw UMI counts (`layers['counts']`)
-   - Generates latent space (`X_scvi`)
-
-2. **CellTypist** - Automated cell type classification
-   - Requires log-normalized counts
-   - Uses Human_Lung_Atlas model (gene symbols)
-
-3. **scANVI** - Semi-supervised label refinement
+3. **scANVI (Semi-supervised Refinement)** - VAE with classifier for label refinement
    - Initialized from trained scVI model
-   - Low-confidence cells (<0.5) marked as "Unknown"
+   - Uses CellTypist predictions as reference labels
+   - Low-confidence cells (<0.5) marked as "Unknown" for refinement
 
-### Key Data Structure
+### Data Structure Conventions
 
-```python
-# AnnData object conventions
-adata.X                    # Processed (log-normalized)
-adata.layers['counts']     # Raw UMI counts (CRITICAL for scVI)
-adata.raw.X                # Full gene set raw counts
+**AnnData object layers:**
+- `.X` - Processed expression (typically log-normalized from BBKNN preprocessing)
+- `.layers['counts']` - **CRITICAL**: Raw UMI counts (required for scVI/scANVI)
+- `.raw.X` - Full gene set raw counts (often shared memory with `layers['counts']`)
 
-# Common obs columns
-adata.obs['celltype']              # Cell type annotations
-adata.obs['Multinomial_Label']     # scANVI predictions
-adata.obs['majority_voting']       # CellTypist predictions
-```
+**Important metadata columns:**
+- `dataset` or `sample` - Batch identifier for correction
+- `tissue` or `tissue_sampling_method` - Tissue type annotation
+- `cell_type` - Major cell type assignments (from BBKNN preprocessing)
 
-### File Naming Conventions
+## Common Development Commands
 
-- `*_scvi_celltypist_scanvi_pipeline_YYYYMMDD_v*.py` - Full pipelines
-- `*_bbknn_*.py` - BBKNN integration scripts
-- `*_subcluster_*.py` - Cell type-specific subclustering
-- `*_visualization_*.ipynb` - Jupyter notebooks for figures
+### Running Analysis Pipelines
 
----
-
-## R Pipeline (`R/`)
-
-### Core Analysis Framework
-
-- **Seurat v5**: Primary single-cell analysis framework
-- **Python integration**: Uses `reticulate` with conda env `bbknn_env`
-- **Monocle3**: Trajectory analysis (T cell differentiation)
-- **DoubletFinder + DecontX**: Quality control
-- **DESeq2 + MASC**: Differential expression and composition analysis
-
-### Critical Functions
-
-#### 1. Data Import: `GetSeurat()`
-```r
-seurat_obj <- GetSeurat(
-  h5ad_path = "path/to/file.h5ad",
-  prefer_raw = TRUE,           # Try adata.raw.X first
-  prefer_layer_counts = TRUE,   # Then adata.layers['counts']
-  validate_counts = TRUE,       # Validate raw counts
-  debug = TRUE
-)
-```
-
-#### 2. QC Pipeline: `rds_folder_qc_smartmerge_*.R`
 ```bash
-Rscript rds_folder_qc_smartmerge_20251213_v1.R \
-  /data/raw_samples /data/cleaned_output
+# Cell-type-specific pipelines (recommended for >100k cells per type)
+python epithelial_scvi_celltypist_scanvi_20251212_v3_4.py
+python tcell_scvi_celltypist_scanvi_pipeline_20251206_v2.py
+python stromal_vascular_scvi_scanvi_pipeline_20251212_v2.py
+python myeloid_scvi_celltypist_scanvi_pipeline_v1.py
+python b_scvi_celltypist_scanvi_pipeline_v1.py
+
+# All-cells pipeline (uses HVG optimization for memory efficiency)
+python allcells_scvi_celltypist_scanvi_pipeline_20251208_v2.1.py
+
+# Legacy BBKNN-based analysis (older approach, not recommended)
+python bbknn_annotation_universal.py
 ```
 
-Pipeline steps:
-1. Gene name standardization (SYMBOL → ALIAS via `org.Hs.eg.db`)
-2. QC filters: nFeature_RNA (200-6000), percent.mt (<20%), percent.ribo (<40%)
-3. DoubletFinder (6% doublet rate)
-4. DecontX (ambient RNA removal, contamination <25%)
-5. Smart merge across samples
+### GPU Verification
 
-#### 3. Trajectory Analysis: `tcell_monocle3_trajectory_*.R`
-- CD4 trajectory: `CD4_Naive → CD4_CM → CD4_EM → Treg`
-- CD8 trajectory: `CD8_Naive → CD8_CM → CD8_EM → CD8_TEMRA`
-
-#### 4. Differential Analysis
-```r
-# Pseudobulk DESeq2
-run_tissue_comparison_analysis(
-  seurat_obj = T_object,
-  cell_anno_col = "Annotation_2",
-  tissue_col = "tissue",
-  sample_col = "sample",
-  min_cell_per_sample = 3
-)
-
-# MASC Cell Composition
-scPairwiseMASCAnalysis(
-  seurat_obj,
-  cell_type_col = "Annotation",
-  sample_col = "sample",
-  contrast_col = "tissue"
-)
+```bash
+# Check GPU availability (REQUIRED before running pipelines)
+python -c "import torch; print(f'GPU: {torch.cuda.is_available()}')"
+python gputest.py
 ```
 
-### Seurat v5 Compatibility Pattern
+### Jupyter Notebook Development
 
-```r
-# Get counts matrix (works across versions)
-get_counts_matrix <- function(seurat_obj, assay = "RNA") {
-  counts <- tryCatch(
-    LayerData(seurat_obj, assay = assay, layer = "counts"),  # v5
-    error = function(e1) tryCatch(
-      GetAssayData(seurat_obj, assay = assay, slot = "counts"),  # v4
-      error = function(e2) seurat_obj[[assay]]@counts  # v3
-    )
-  )
-  return(counts)
-}
+```bash
+# Launch notebooks for interactive analysis
+jupyter notebook complete_epithelial_pipeline_v2.ipynb
+jupyter notebook tcell_analysis_with_starcat_v1.4.ipynb
+jupyter notebook Epithelial_scANVI_Training.ipynb
 ```
 
----
+## Critical Implementation Patterns
 
-## Data Locations
+### 1. Gene Name Handling
 
-### Directory Structure (Latest by Category)
+**Gene conversion priority (ENFORCED across all v2+ pipelines):**
 
-```
-/home/h2048/data/
-├── py/                    # Python scanpy/scVI outputs (by date)
-│   ├── 0214/              # Latest: Stromal/T cell visualization
-│   │   └── stromal_marker_visualization/
-│   ├── 0212/              # T cell annotation viz
-│   │   └── tcell_annotation_viz/
-│   ├── 0209/              # Myeloid validation optimized
-│   │   ├── myeloid_validation_optimized/
-│   │   └── epithelial_viz_L3_v1_0/
-│   ├── 0208/              # Merged scANVI L2 (v2.5.5 HOTFIX)
-│   │   └── merged_scanvi_L2_prod_v2_5_5_HOTFIX/
-│   ├── 0204/              # scArches mapping L2
-│   │   └── scarches_mapping_L2_v2_5_3/
-│   ├── 0129/              # T/NK unified analysis
-│   │   └── tnk_analysis_unified/
-│   └── (earlier dates: 0128, 0127, 0121, 0119, 0118...)
-│
-├── R/                     # R Seurat outputs (by date)
-│   ├── 0210/              # Latest: Epithelial/Stromal interpretation
-│   │   ├── epithelial_interpret_v3_2_1/
-│   │   └── stromal_interpret_v3_2_1/
-│   ├── 0209/              # Myeloid/B cell analysis
-│   ├── 0205/              # Stromal analysis
-│   ├── 0204/              # Integrated analysis
-│   ├── 0131/              # B cell merge viz
-│   ├── 0130/              # T cell analysis
-│   └── (earlier dates: 0129, 0128, 0127, 0126...)
-│
-├── bulk/                  # Bulk RNA-seq data
-├── core_data/             # Core reference datasets
-│   └── cellranger/        # Cell Ranger reference genomes
-├── index_genome/          # Reference genomes and indexes
-│   └── cisTarget_databases/
-└── source/                # Raw data sources
-```
-
-### Key Analysis Outputs by Cell Type
-
-| Cell Type | Latest Python Output | Latest R Output |
-|-----------|---------------------|-----------------|
-| **T cells** | `py/0212/tcell_annotation_viz/` | `R/0210/` (interpretation) |
-| **B cells** | `py/0203/bcell_scarches_v4_1/` | `R/0131/` |
-| **Myeloid** | `py/0209/myeloid_validation_optimized/` | `R/0209/` |
-| **Epithelial** | `py/0209/epithelial_viz_L3_v1_0/` | `R/0210/epithelial_interpret_v3_2_1/` |
-| **Stromal** | `py/0214/stromal_marker_visualization/` | `R/0210/stromal_interpret_v3_2_1/` |
-| **All cells** | `py/0208/merged_scanvi_L2_prod_v2_5_5_HOTFIX/` | - |
-
-### Output File Patterns
-
-**Python outputs (`py/YYYYMMDD/`):**
-- `adata_*_results.h5ad` - Main AnnData with scVI/scANVI latents
-- `*_scanvi_model/` - Saved scANVI models
-- `*_umap_operator.joblib` - UMAP transformers for projection
-- `*_markers.csv` - Differential expression results
-- `figures/*.pdf` - Visualization outputs
-
-**R outputs (`R/YYYYMMDD/`):**
-- `*_seurat.rds` - Seurat objects
-- `*_markers.csv` - FindAllMarkers results
-- `*_degs.csv` - DESeq2 differential expression
-- `figures/*.pdf` - Plots and visualizations
-
----
-
-## Environment Setup
-
-### Python Environment (`bbknn_env`)
 ```python
-# Required packages
-scanpy, scvi-tools, celltypist, bbknn, anndata
+# CRITICAL: Gene conversion BEFORE creating .raw
+normalize_gene_names(adata)  # Adds 'symbol_base' column
+preserve_full_raw_if_missing(adata)  # Then create .raw
+
+# Priority order:
+# 1. Local metadata columns: 'gene_symbol', 'gene_symbols', 'symbol'
+# 2. mygene.org conversion (ENSEMBL → HGNC symbols)
+# 3. Fallback: use var_names as-is
+
+# For CellTypist compatibility:
+# - Human_Lung_Atlas.pkl expects HGNC gene symbols
+# - Use base symbols WITHOUT -1/-2 suffixes (deduplication artifacts)
+# - Build overlap using adata.raw.var['symbol_base']
 ```
 
-### R Environment
-```r
-library(reticulate)
-use_condaenv("bbknn_env", required = TRUE)
+### 2. HVG (Highly Variable Genes) Selection
 
-# Key packages
-# Bioconductor: org.Hs.eg.db, clusterProfiler, DropletUtils
-# GitHub: mojaveazure/seurat-disk, cellgeni/sceasy, PaulingLiu/ROGUE
-# CRAN: Seurat, monocle3, DoubletFinder, DESeq2, GSVA
-```
+**Two approaches based on dataset size:**
 
----
-
-## Common Workflows
-
-### 1. Python → R Handoff
 ```python
-# In Python
-adata.write_h5ad("output.h5ad")
+# For large datasets (>400k cells) - MEMORY OPTIMIZED
+N_HVG = 4000  # 2k-5k recommended
+sc.pp.highly_variable_genes(adata, layer='counts', n_top_genes=N_HVG,
+                             batch_key='dataset', flavor='seurat_v3', subset=False)
+
+# Critical: Create SEPARATE adata_model for training
+adata_model = sc.AnnData(
+    X=adata.layers['counts'][:, hvg_mask].copy(),
+    obs=adata.obs[['dataset']].copy(),
+    var=adata.var.loc[hvg_mask].copy()
+)
+# Benefits: ~90% memory reduction, 10-20x training speedup
+
+# For smaller datasets (<100k cells) - ALL GENES
+# Use full gene set directly (no subsetting)
 ```
-```r
-# In R
-source("R/GetSeurat.R")
-seurat_obj <- GetSeurat("output.h5ad", validate_counts = TRUE)
+
+### 3. scVI Model Training/Loading Pattern
+
+```python
+# ALWAYS preserve HVG list for model reuse
+hvg_file = output_dir / "hvg_genes.txt"
+pd.Series(hvg_genes).to_csv(hvg_file, index=False, header=False)
+
+# Reuse existing model (production pattern):
+if PRETRAINED_SCVI_MODEL and Path(PRETRAINED_SCVI_MODEL).exists():
+    genes_for_training = load_gene_list_for_pretrained(PRETRAINED_SCVI_MODEL)
+    # Must subset new data to EXACT same genes
+    hvg_mask = adata.var['symbol_base'].isin(genes_for_training)
+    scvi_model = scvi.model.SCVI.load(PRETRAINED_SCVI_MODEL, adata=adata_model)
+else:
+    # Train new model
+    scvi_model = scvi.model.SCVI(adata_model, n_latent=75, n_layers=3, ...)
+    scvi_model.train(max_epochs=800, batch_size=256, ...)
+    scvi_model.save(model_path)
 ```
 
-### 2. Complete Analysis Pipeline
-1. **Python**: QC + scVI + CellTypist + scANVI → h5ad
-2. **R**: Import with GetSeurat → Subset → DE/Trajectory
+### 4. Dual UMAP Management (CRITICAL FIX in v2.x)
 
-### 3. Cell Type Subclustering
-1. **Python**: Subset cell type → BBKNN + scANVI
-2. **R**: Import → Annotation refinement → Interpretation
+**Problem:** scANVI UMAP was overwriting scVI UMAP in older versions.
 
----
+**Solution:** Use `neighbors_key` to maintain separate embeddings:
 
-## Key Metadata Columns
+```python
+# scVI UMAP
+sc.pp.neighbors(adata, use_rep='X_scvi', n_neighbors=30, key_added='neighbors_scvi')
+sc.tl.umap(adata, neighbors_key='neighbors_scvi')
+adata.obsm['X_umap_scvi'] = adata.obsm['X_umap'].copy()
 
-| Column | Description |
-|--------|-------------|
-| `celltype` / `Annotation` / `Annotation_2` | Cell identity |
-| `sample` / `sample_id` | Sample identifier |
-| `tissue` / `Location` | Tissue type |
-| `disease` / `COVID_status` | Disease status |
-| `nFeature_RNA`, `nCount_RNA` | QC metrics |
-| `percent.mt`, `percent.ribo` | QC metrics |
-| `DF.classifications` | Doublet status |
-| `decontX_contamination` | Ambient RNA level |
+# scANVI UMAP (separate)
+sc.pp.neighbors(adata, use_rep='X_scanvi', n_neighbors=30, key_added='neighbors_scanvi')
+sc.tl.umap(adata, neighbors_key='neighbors_scanvi')
+adata.obsm['X_umap_scanvi'] = adata.obsm['X_umap'].copy()
 
----
+# Result: Both UMAPs preserved in separate .obsm slots
+```
 
-## Best Practices
+### 5. Rare Cell Type Filtering
 
-1. **Always validate raw counts** when importing h5ad files
-2. **Use gene standardization** before merging datasets
-3. **QC order**: Basic QC → Doublet removal → Ambient RNA removal
-4. **Batch effects**: Use Harmony/scVI for visualization; include batch as random effect for DE
-5. **Pseudobulk**: Minimum 3 cells per sample per cell type; minimum 3 samples per condition
-6. **File naming**: Use ISO date prefix `YYYYMMDD` and version suffix `_v1`, `_v2`
+```python
+# Stability improvement: Merge rare types to prevent scANVI training issues
+MIN_CELLS_PER_TYPE = 10  # Threshold for rare types
 
----
+def merge_rare_types(labels, min_cells=10, unknown_label="Unknown"):
+    vc = labels.value_counts()
+    rare_types = vc[vc < min_cells].index
+    labels[labels.isin(rare_types)] = unknown_label
+    return labels
 
-## Cell Type Focus
+# Apply BEFORE scANVI training
+adata.obs['labels_for_scanvi'] = merge_rare_types(
+    adata.obs['cell_type_celltypist_filt'],
+    min_cells=MIN_CELLS_PER_TYPE
+)
+```
 
-Primary cell types analyzed:
-- **T cells**: CD4/CD8 subsets, differentiation states
-- **B cells**: Subclustering and activation states
-- **Myeloid cells**: Monocytes, macrophages
-- **Epithelial cells**: AT1, AT2, ciliated, goblet, club, basal
-- **Stromal cells**: Fibroblasts, endothelial
+### 6. Index-Aligned Result Writing (v2.1+ Critical Fix)
 
----
+```python
+# WRONG (v1.x - position-based, prone to reordering bugs):
+adata.obs['cell_type'] = predictions.predicted_labels['predicted_labels'].values
 
-## See Also
+# CORRECT (v2.x - index-aligned):
+pred_df = predictions.predicted_labels
+pred_df = pred_df.reindex(adata.obs_names)  # Force alignment
+adata.obs['cell_type'] = pred_df['predicted_labels'].astype(str).values
+```
 
-- `py/CLAUDE.md` - Detailed Python pipeline documentation
-- `R/CLAUDE.md` - Detailed R pipeline documentation
+## File Naming Conventions
+
+**Versioning pattern:** `{celltype}_scvi_celltypist_scanvi_{date}_v{version}.py`
+
+Examples:
+- `epithelial_scvi_celltypist_scanvi_20251212_v3_4.py` - Production (v3.4)
+- `tcell_scvi_celltypist_scanvi_pipeline_20251206_v2.py` - Stable (v2.0)
+- `stromal_vascular_scvi_scanvi_pipeline_20251212_v2.py` - Latest
+
+**Checkpoint naming:** `adata_{celltype}_FINAL.h5ad` for production outputs
+
+## Data Paths (HPC Environment)
+
+**Input data:**
+- `/home/h2048/data/py/1128/bbknn_celltype_analysis/{CellType}/adata_{CellType}_bbknn.h5ad`
+- `/home/h2048/data/py/1128/bbknn_annotation_analysis/adata_bbknn_annotated_corrected.h5ad` (all cells)
+
+**Output structure:**
+```
+/home/h2048/data/py/{YYMMDD}/{analysis_name}/
+├── adata_{celltype}_FINAL.h5ad
+├── models/
+│   ├── scvi_model/
+│   └── scanvi_model/
+├── hvg_genes.txt (CRITICAL for model reuse)
+├── figures/
+└── README.md (auto-generated summary)
+```
+
+**Reference models:**
+- `/home/h2048/data/source/reference/celltypist_models/Human_Lung_Atlas.pkl`
+- `/home/h2048/data/source/reference/celltypist_models/Immune_All_Low.pkl`
+
+## GPU Configuration
+
+**Single-GPU enforcement (v2.1+ fix):**
+```python
+# CRITICAL: Explicit single GPU control (prevents multi-GPU conflicts)
+if torch.cuda.is_available():
+    train_kwargs.update({'accelerator': 'gpu', 'devices': 1})
+else:
+    train_kwargs.update({'accelerator': 'cpu', 'devices': 'auto'})
+```
+
+**Reproducibility setup:**
+```python
+RANDOM_SEED = 42
+np.random.seed(RANDOM_SEED)
+torch.manual_seed(RANDOM_SEED)
+if torch.cuda.is_available():  # CPU-safe (v2.1 fix)
+    torch.cuda.manual_seed_all(RANDOM_SEED)
+scvi.settings.seed = RANDOM_SEED
+scvi.settings.dl_num_workers = 0
+```
+
+## Major Cell Type Pipelines
+
+### Epithelial Cells (v3.4 - Production)
+- **File:** `epithelial_scvi_celltypist_scanvi_20251212_v3_4.py`
+- **Features:** Robust gene conversion, HVG coordination with pretrained models
+- **Expected subtypes:** Basal, AT1, AT2, Ciliated, Secretory, Ionocytes
+
+### T/NK Cells (v2.0)
+- **File:** `tcell_scvi_celltypist_scanvi_pipeline_20251206_v2.py`
+- **Model:** Immune_All_Low.pkl
+- **Expected subtypes:** CD4+ T, CD8+ T, Tregs, NK cells, NKT, MAIT
+
+### Stromal/Vascular Cells (v2.3)
+- **File:** `stromal_vascular_scvi_scanvi_pipeline_20251212_v2.py`
+- **Target types:** Endothelial, Fibroblast, SMC (smooth muscle cells)
+- **Marker genes:** PECAM1/CDH5 (endothelial), COL1A1/PDGFRA (fibroblasts), ACTA2/MYH11 (SMC)
+
+### Myeloid Cells
+- **File:** `myeloid_scvi_celltypist_scanvi_pipeline_v1.py`
+- **Expected subtypes:** Macrophages (M1/M2), Monocytes, DCs, Mast cells
+
+### B Cells
+- **File:** `b_scvi_celltypist_scanvi_pipeline_v1.py`
+- **Expected subtypes:** Naive B, Memory B, Plasma cells
+
+## Common Issues and Solutions
+
+### Issue: "layers['counts'] not found"
+**Solution:** Check if raw counts are in `.raw.X` or `.X`. Extract to `layers['counts']`:
+```python
+if adata.raw is not None:
+    adata.layers['counts'] = adata.raw.X.copy()
+```
+
+### Issue: "Model gene list mismatch"
+**Solution:** Always load `hvg_genes.txt` when reusing pretrained models:
+```python
+hvg_file = model_dir.parent / "hvg_genes.txt"
+hvg_genes = pd.read_csv(hvg_file, header=None)[0].tolist()
+hvg_mask = adata.var['symbol_base'].isin(hvg_genes)
+```
+
+### Issue: "Low CellTypist gene overlap (<50%)"
+**Solution:** Check gene name format. CellTypist expects symbols, not ENSEMBL IDs:
+```python
+sample_gene = str(adata.var_names[0])
+if sample_gene.startswith('ENSG'):
+    # Need conversion via mygene or local metadata
+    normalize_gene_names(adata)
+```
+
+### Issue: "scANVI training unstable"
+**Solution:** Filter rare cell types before training:
+```python
+merge_rare_types(adata.obs['labels_for_scanvi'], min_cells=10, other='Unknown')
+```
+
+### Issue: "Out of memory during training"
+**Solution:** Use HVG optimization for large datasets:
+```python
+USE_HVG_FOR_SCVI = True
+N_HVG = 4000  # Reduce from 58k genes
+# Expected memory reduction: ~60-70%
+```
+
+## Critical Fixes in v2+ Pipelines
+
+All modern pipelines (v2.0+) include these MANDATORY fixes:
+
+1. **Gene alignment** - `normalize_gene_names()` BEFORE `.raw` creation
+2. **UMAP separation** - Use `neighbors_key` to prevent overwriting
+3. **CPU-safe CUDA** - Conditional `torch.cuda.manual_seed_all()`
+4. **Filter on counts** - Gene filtering uses `layers['counts']`, not `.X`
+5. **Index-aligned writes** - Use `.reindex()` when transferring predictions
+6. **Single GPU control** - Explicit `devices=1` for scVI/scANVI
+7. **Rare type handling** - Merge types with <10 cells to "Unknown"
+
+## Dependencies
+
+**Core packages:**
+```
+scanpy>=1.9
+scvi-tools>=1.0
+celltypist>=1.6
+torch>=2.0 (with CUDA support)
+mygene>=3.2
+```
+
+**Optional but recommended:**
+```
+bbknn>=1.5 (for BBKNN preprocessing)
+harmony-pytorch (alternative batch correction)
+```
+
+## Performance Guidelines
+
+**Dataset size vs. approach:**
+- **<50k cells:** All genes, standard parameters
+- **50k-200k cells:** HVG (4k genes), standard epochs
+- **>200k cells:** HVG (4k genes), reduce epochs (scVI: 400→200, scANVI: 600→200)
+- **>500k cells:** Consider cell-type-specific split pipelines
+
+**Expected runtimes (on V100 GPU):**
+- scVI training (100k cells, 4k HVG): ~30-60 min
+- scANVI training (100k cells): ~20-40 min
+- CellTypist annotation: ~5-10 min
+- Total pipeline (100k cells): ~2-3 hours
+
+## Code Quality Standards
+
+When modifying pipelines:
+1. Preserve version history in docstrings (list critical fixes)
+2. Use explicit layer specifications (`layer='counts'` not `layer=None` with assumptions)
+3. Always save HVG lists when training new models (`hvg_genes.txt`)
+4. Add sanity checks (gene count validation, confidence score ranges)
+5. Export statistics to CSV for audit trails
+6. Use `adata.uns['pipeline_info']` to document parameters
