@@ -436,7 +436,7 @@ log_print("STEP 5: FILTER LABELS FOR scANVI TRAINING")
 log_print("="*80)
 
 # Create a copy of annotations for training labels
-adata.obs['labels_for_scanvi'] = adata.obs[UNIFIED_SCANVI_ANNOTATION].copy()
+adata.obs['labels_for_scanvi'] = adata.obs[UNIFIED_SCANVI_ANNOTATION]
 
 # Count cells before filtering
 labeled_before = (adata.obs['labels_for_scanvi'] != UNLABELED_CATEGORY).sum()
@@ -530,7 +530,7 @@ if not is_integer:
 # Store counts in .X temporarily for scVI
 log_print(f"\nPreparing data for scVI...")
 adata.layers['original_X'] = adata.X.copy()  # Backup original X
-adata.X = adata.layers['counts'].copy()
+adata.X = adata.layers['counts']
 
 # Filter genes (keep genes expressed in at least 10 cells)
 log_print(f"\nFiltering genes...")
@@ -616,7 +616,7 @@ log_memory("After scVI latent extraction")
 log_print(f"\nComputing UMAP from scVI latent space...")
 sc.pp.neighbors(adata, use_rep='X_scvi', n_neighbors=UMAP_N_NEIGHBORS, key_added='scvi')
 sc.tl.umap(adata, min_dist=UMAP_MIN_DIST, spread=UMAP_SPREAD, neighbors_key='scvi')
-adata.obsm['X_umap_scvi'] = adata.obsm['X_umap'].copy()
+adata.obsm['X_umap_scvi'] = adata.obsm['X_umap']
 log_print(f"✓ UMAP computed and saved as 'X_umap_scvi'")
 log_memory("After scVI UMAP")
 
@@ -712,7 +712,7 @@ log_memory("After scANVI extraction")
 log_print(f"\nComputing UMAP from scANVI latent space...")
 sc.pp.neighbors(adata, use_rep='X_scanvi', n_neighbors=UMAP_N_NEIGHBORS, key_added='scanvi')
 sc.tl.umap(adata, min_dist=UMAP_MIN_DIST, spread=UMAP_SPREAD, neighbors_key='scanvi')
-adata.obsm['X_umap_scanvi'] = adata.obsm['X_umap'].copy()
+adata.obsm['X_umap_scanvi'] = adata.obsm['X_umap']
 log_print(f"✓ UMAP computed and saved as 'X_umap_scanvi'")
 log_memory("After scANVI UMAP")
 
@@ -742,7 +742,7 @@ sc.set_figure_params(dpi=DPI, frameon=False, figsize=(8, 6), facecolor='white')
 log_print(f"\n[Figure 1] scVI UMAP - Batch Mixing...")
 fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
-adata.obsm['X_umap'] = adata.obsm['X_umap_scvi'].copy()
+adata.obsm['X_umap'] = adata.obsm['X_umap_scvi']
 
 sc.pl.umap(adata, color=BATCH_KEY, ax=axes[0], show=False,
            title='scVI Integration: Batch Effect Correction',
@@ -762,7 +762,7 @@ log_print(f"  ✓ Saved: scvi_umap_batch_mixing.{FIGURE_FORMAT}")
 log_print(f"\n[Figure 2] scANVI UMAP - Cell Type Annotations...")
 fig, axes = plt.subplots(2, 2, figsize=(16, 14))
 
-adata.obsm['X_umap'] = adata.obsm['X_umap_scanvi'].copy()
+adata.obsm['X_umap'] = adata.obsm['X_umap_scanvi']
 
 # Original annotations
 sc.pl.umap(adata, color=UNIFIED_SCANVI_ANNOTATION, ax=axes[0, 0], show=False,
@@ -795,13 +795,13 @@ log_print(f"\n[Figure 3] Comparison: scVI vs scANVI...")
 fig, axes = plt.subplots(1, 2, figsize=(18, 7))
 
 # scVI UMAP
-adata.obsm['X_umap'] = adata.obsm['X_umap_scvi'].copy()
+adata.obsm['X_umap'] = adata.obsm['X_umap_scvi']
 sc.pl.umap(adata, color='scanvi_predictions', ax=axes[0], show=False,
            title='scVI UMAP (Batch Corrected)',
            legend_loc='right margin', frameon=False, legend_fontsize=6)
 
 # scANVI UMAP
-adata.obsm['X_umap'] = adata.obsm['X_umap_scanvi'].copy()
+adata.obsm['X_umap'] = adata.obsm['X_umap_scanvi']
 sc.pl.umap(adata, color='scanvi_predictions', ax=axes[1], show=False,
            title='scANVI UMAP (Cell Type Refined)',
            legend_loc='right margin', frameon=False, legend_fontsize=6)
@@ -849,7 +849,7 @@ log_print("STEP 10: FINAL SUMMARY AND SAVE")
 log_print("="*80)
 
 # Restore original X
-adata.X = adata.layers['original_X'].copy()
+adata.X = adata.layers['original_X']
 del adata.layers['original_X']
 gc.collect()
 
