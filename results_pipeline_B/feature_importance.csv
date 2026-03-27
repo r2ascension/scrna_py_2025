@@ -1,0 +1,10 @@
+feature,importance
+logFC_CD8_T,0.17332834541813544
+avg_expr_CD8_T,0.16842613035137607
+avg_expr_Macrophage,0.163932292168077
+avg_expr_CD4_T,0.15721323071278456
+pct_expr_CD4_T,0.12833054210441627
+pct_expr_Macrophage,0.10962016480949227
+pct_expr_CD8_T,0.09914929443571838
+logFC_CD4_T,0.0
+logFC_Macrophage,0.0
