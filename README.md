@@ -628,6 +628,83 @@ source("rds_to_h5ad.R")   # 批量 Seurat RDS → H5AD，供 Python 管道使用
 
 ---
 
+## 🔍 GitHub Repository Survey Tool
+
+**[`github_scrna_survey.py`](./github_scrna_survey.py)** — v1.0 GitHub REST API scout for
+single-cell reproducibility repositories.
+
+Searches GitHub for repositories that likely accompany top-journal scRNA-seq publications,
+then enriches each hit with language composition, recursive file-type scanning, journal
+detection, and study-vs-method scoring.  Results are exported as CSV and JSONL.
+
+### Features
+
+| Feature | Details |
+|---------|---------|
+| **Multi-query search** | Deduplicated across multiple search queries |
+| **Language API** | Per-repo language breakdown via `/repos/{owner}/{repo}/languages` |
+| **Recursive tree scan** | Detects `.ipynb`, `.Rmd`, `Snakefile`, `.nf`, `Dockerfile`, `environment.yml`, `requirements.txt` etc. across the whole repo |
+| **Journal detection** | 26 full names + 10 abbreviations; longer names always preferred (e.g. "Nature Communications" before "Nature") |
+| **Conservative year** | Year only extracted when adjacent to DOI / bioRxiv / journal anchor |
+| **Scoring** | `study_score` vs `method_score` with `repo_type` ∈ {study, method, mixed, unknown} |
+| **Fork exclusion** | Forks excluded by default; `--include-forks` to override |
+| **Rate-limit safe** | Explicit `User-Agent`, exponential back-off, 403/429/5xx retry |
+| **Outputs** | `{prefix}.csv` + `{prefix}.jsonl` with confidence / score fields |
+
+### Quick start
+
+```bash
+# Authenticate (strongly recommended — unauthenticated rate limit is 10 req/min)
+export GITHUB_TOKEN=ghp_...
+
+# Run with defaults (5 built-in queries, max 200 repos/query)
+python github_scrna_survey.py
+
+# Custom queries, higher star threshold, skip slow tree scan
+python github_scrna_survey.py \
+    --queries "scrna-seq analysis Nature 2023" \
+              "single cell reproducibility 2024" \
+    --output-prefix my_survey \
+    --max-repos 500 \
+    --min-stars 5 \
+    --no-tree-scan
+
+# Include forks
+python github_scrna_survey.py --include-forks
+```
+
+### Output fields
+
+`full_name`, `html_url`, `description`, `stars`, `forks_count`, `open_issues`,
+`watchers`, `created_at`, `updated_at`, `pushed_at`, `is_fork`, `is_archived`,
+`top_language`, `languages_json`, `topics`,
+`repo_type`, `study_score`, `method_score`,
+`journal_detected`, `journal_confidence`, `paper_year`,
+`has_notebook`, `notebook_count`, `has_rmd`, `rmd_count`,
+`has_snakemake`, `snakemake_count`, `has_nextflow`, `nextflow_count`,
+`has_docker`, `docker_count`, `has_conda_env`, `conda_env_count`,
+`has_requirements`, `requirements_count`, `readme_snippet`
+
+### Running the unit tests
+
+```bash
+python test_github_scrna_survey.py      # standard library unittest (no extra dependencies)
+# or, if pytest is installed:
+python -m pytest test_github_scrna_survey.py -v
+```
+
+### Limitations
+
+- GitHub search index may lag by minutes to hours for very new repos.
+- Tree scan and README/language API calls add ~3–5 API requests per repo; a large
+  run (500+ repos) requires a GitHub token to stay within rate limits.
+- `paper_year` and `journal_detected` are best-effort heuristics — always verify
+  before using in downstream analyses.
+- Repos with very large trees (>100 000 files) may return truncated tree results;
+  a warning is logged in that case.
+
+---
+
 ## 📄 文档
 
 - **[SCRIPT_CATEGORIZATION.md](./SCRIPT_CATEGORIZATION.md)** — 全部脚本详细分类、推荐版本与快速查找指南
