@@ -197,7 +197,149 @@
 
 ---
 
-## 🎯 推荐使用流程
+## 9️⃣ scHPL / treeArches 层级校验 🆕
+
+**功能**: 在 base model（scANVI/scArches）之后作为独立层级校验器，判断 query 是否被 reference hierarchy 稳定吸收
+
+| 脚本名称 | 模式 | 版本 | 特性 |
+|---------|------|------|------|
+| `lineage_merge_schpl_core_20260402.py` | global | **v1.0** | ✅ **推荐** - global lineage-wise 复用核心 |
+| `bcell_merge_schpl_20260412_v1.py` | global | v1.0 | B 细胞 scHPL 谱系合并 |
+| `tcell_merge_schpl_20260402_v1.py` | global | v1.0 | T/NK scHPL 谱系合并 |
+| `myeloid_merge_schpl_20260402_v1.py` | global | v1.0 | 髓系 scHPL 谱系合并 |
+| `bcell_schpl_reject_followup_20260412_v1.py` | follow-up | v1.0 | B 细胞 Rejected 跟进 |
+| `stromal_schpl_reject_followup_20260408_v1_0.py` | follow-up | v1.0 | 基质 Rejected 跟进 |
+| `stromal_schpl_postprocess_v1_0_20260401.R` | downstream | v1.0 | 基质 scHPL R 侧后处理 |
+
+**核心技能**:
+- kNN classifier (dimred=True, useRE=True, n_neighbors=50)
+- 标准输出列：`schpl_pred`、`schpl_prob`、`schpl_rejected`、`schpl_reject_type`
+- Rejected 细胞跟进：marker DE、邻域分析、新类型候选识别
+- 方法学详见 `SCHPL_METHODOLOGY_UNIFIED_20260410.md`
+
+---
+
+## 🔟 组织间比较分析 (Tissue Comparison) 🆕
+
+**功能**: 各谱系亚型的组织间差异分析，包含 DESeq2 pseudobulk + GSVA + MASC 框架
+
+### 通用框架
+
+| 脚本名称 | 版本 | 特性 |
+|---------|------|------|
+| `tissue_comparison_generic_wrapper_20260412.R` | **v1.0** | ✅ **推荐** - 通用封装器 |
+| `tissue_comparison_advanced_helper_20260408.R` | v1.0 | 高级辅助函数 |
+| `tissue_comparison_analysis_20251222.R` | v3.0 | 基础多组织比较 |
+
+### B 细胞组织比较
+
+| 脚本名称 | 版本 | 特性 |
+|---------|------|------|
+| `bcell_tissue_comparison_v2_6_4_20260412.R` | **v2.6.4** | ✅ **最新** |
+| `bcell_tissue_comparison_v2_6_3_20260411.R` | v2.6.3 | |
+| `bcell_tissue_comparison_v2_6_2_20260410.R` | v2.6.2 | |
+| `bcell_tissue_comparison_v2_6_1_20260410.R` | v2.6.1 | |
+| `bcell_tissue_comparison_v2_6_20260410.R` | v2.6 | |
+| `bcell_tissue_comparison_v2_6_20260410_llm_resume.R` | v2.6 | LLM 续跑版 |
+| `bcell_tissue_comparison_v2_6_20260406.R` | v2.6 | 早期版 |
+| `bcell_tissue_comparison_v2_5_20260402.R` | v2.5 | |
+| `bcell_tissue_comparison_v2_4_20260390.R` | v2.4 | |
+
+### T/NK 组织比较
+
+| 脚本名称 | 版本 | 特性 |
+|---------|------|------|
+| `tnk_tissue_comparison_v2_6_1_20260413.R` | **v2.6.1** | ✅ **最新** |
+| `tnk_tissue_comparison_v2_6_20260407.R` | v2.6 | |
+| `tnk_tissue_comparison_v2_4_20260401.R` | v2.4 | |
+
+### 髓系组织比较
+
+| 脚本名称 | 版本 | 特性 |
+|---------|------|------|
+| `myeloid_tissue_comparison_20260407_v1_1.R` | **v1.1** | ✅ **最新** |
+| `myeloid_tissue_comparison_20260401_v1_0.R` | v1.0 | |
+
+### 上皮组织比较
+
+| 脚本名称 | 版本 | 特性 |
+|---------|------|------|
+| `epithelial_tissue_comparison_v1_3_2_20260413.R` | **v1.3.2** | ✅ **最新** |
+| `epithelial_tissue_comparison_20260407_v1_3_1.R` | v1.3.1 | |
+| `epithelial_tissue_comparison_20260407_v1_3.R` | v1.3 | |
+| `epithelial_tissue_comparison_20260402_v1_2.R` | v1.2 | |
+| `epithelial_tissue_comparison_20260331_v1_1.R` | v1.1 | |
+
+### 基质/血管亚型组织比较
+
+| 脚本名称 | 版本 | 特性 |
+|---------|------|------|
+| `stromal_endothelial_tissue_comparison_20260408_v1_0.R` | v1.0 | 内皮细胞 |
+| `stromal_fibroblast_tissue_comparison_20260408_v1_0.R` | v1.0 | 成纤维细胞 |
+| `stromal_smc_tissue_comparison_20260408_v1_0.R` | v1.0 | 平滑肌细胞 |
+
+**核心技能**:
+- DESeq2 pseudobulk 差异表达
+- GSVA 通路活性评分
+- MASC 混合效应细胞组成分析
+- LLM 辅助结果解读与续跑
+
+---
+
+## 1️⃣1️⃣ SCENIC 基因调控网络 🆕
+
+**功能**: 基于 SCENIC 框架推断转录因子调控网络
+
+| 脚本名称 | 语言 | 特性 |
+|---------|------|------|
+| `prepare_rscenic_cistarget_db_20260410.py` | Python | cisTarget 数据库下载与格式化 |
+| `configure_scenic_r_env_20260410.R` | R | SCENIC R 环境配置 |
+| `scenic_core_20260410.R` | R | ✅ **核心引擎** - GRNBoost2 + cisTarget + AUCell |
+| `tnk_tcell_scenic_L3_20260410.R` | R | T/NK L3 精细级别 SCENIC |
+| `bcell_scenic_L3_20260412.R` | R | B 细胞 L3 精细级别 SCENIC |
+
+---
+
+## 1️⃣2️⃣ 表型–基因关联管道 🆕
+
+**功能**: 多模块管道，从 pseudobulk DE 到图神经网络链接预测
+
+| 脚本名称 | 语言 | 模块 | 特性 |
+|---------|------|------|------|
+| `phenotype_gene_pipeline_A_pseudobulk_hpo_enrichment.R` | R | A | Pseudobulk + HPO 表型富集 |
+| `phenotype_gene_pipeline_B_supervised_ranking.py` | Python | B | 监督学习基因排序 |
+| `phenotype_gene_pipeline_C_graph_link_prediction.py` | Python | C | 图链接预测 |
+| `phenotype_gene_pipeline_D_module_score_hpo.R` | R | D | 模块评分 + HPO |
+
+---
+
+## 1️⃣3️⃣ 差异丰度分析 (Milo/PAGA) 🆕
+
+**功能**: 基于邻域的差异丰度检验
+
+| 脚本名称 | 版本 | 特性 |
+|---------|------|------|
+| `bcell_paga_milo_20260412_v1_1.py` | v1.1 | B 细胞 PAGA 轨迹 + Milo 差异丰度 |
+| `myeloid_milopy_tissue_celltype_20260410_v1.py` | v1.0 | 髓系 Milo（按组织 × 细胞类型） |
+
+---
+
+## 1️⃣4️⃣ scANVI 验证与准备 🆕
+
+| 脚本名称 | 版本 | 特性 |
+|---------|------|------|
+| `bcell_scanvi_validation_20260412.py` | v1.0 | B 细胞 scANVI 注释验证 |
+| `prepare_bcell_scanvi_umap_input_20260413.py` | v1.0 | B 细胞 scANVI UMAP 输入准备 |
+
+---
+
+## 1️⃣5️⃣ 基质重整合 (Stromal Reintegration) 🆕
+
+| 脚本名称 | 版本 | 特性 |
+|---------|------|------|
+| `stromal_reintegration_branchwise_scvi_scanvi_20260407_v1_5.py` | **v1.5** | ✅ 分支式 scVI/scANVI 重整合 |
+| `stromal_scarches_query_branchwise_20260407_v1_0.py` | v1.0 | 分支式 scArches 查询映射 |
+| `epithelial_scarches_query_mapping_20260315_v1_1.py` | v1.1 | 上皮 scArches 查询映射 |
 
 ### 场景1: 新数据全流程分析
 ```bash
@@ -264,6 +406,23 @@ python scarches_mapping_20260127_v1_2_1.py
 - ✅ 技术基因过滤
 - ✅ 批次效应监控
 
+### scHPL/treeArches系列 (层级校验) 🆕
+- ✅ scHPL 作为 base model 后的 secondary hierarchical validator
+- ✅ global lineage-wise 与 branch-wise 双模式
+- ✅ 标准 Rejected follow-up 框架
+- ✅ 标准输出列：schpl_pred, schpl_prob, schpl_rejected, schpl_reject_type
+
+### Tissue Comparison v2.6系列 (组织比较) 🆕
+- ✅ 全谱系覆盖 (B/TNK/Myeloid/Epithelial/Stromal各亚型)
+- ✅ 通用封装器 (tissue_comparison_generic_wrapper)
+- ✅ LLM 续跑支持
+- ✅ DESeq2 + GSVA + MASC 三维分析
+
+### SCENIC系列 (基因调控) 🆕
+- ✅ cisTarget 数据库自动准备
+- ✅ GRNBoost2 + cisTarget + AUCell 完整管道
+- ✅ L3 精细级别谱系特异性分析
+
 ---
 
 ## 🔧 技能总结 (Skills Summary)
@@ -277,6 +436,11 @@ python scarches_mapping_20260127_v1_2_1.py
 6. **双细胞检测** - Top2谱系 + margin逻辑
 7. **模型迁移** - scArches (surgical fine-tuning)
 8. **质量控制** - 协变量整合, Unknown过滤
+9. **层级校验** 🆕 - scHPL/treeArches (global lineage-wise + branch-wise)
+10. **组织间比较** 🆕 - DESeq2 pseudobulk + GSVA + MASC (全谱系覆盖)
+11. **基因调控网络** 🆕 - SCENIC (GRNBoost2 + cisTarget + AUCell)
+12. **差异丰度** 🆕 - Milo 邻域分析 + PAGA 轨迹
+13. **表型–基因关联** 🆕 - HPO 富集 + 监督学习 + 图链接预测 + 模块评分
 
 ### 数据处理技能
 9. **基因名标准化** - ENSEMBL → HGNC symbols
@@ -312,19 +476,28 @@ python scarches_mapping_20260127_v1_2_1.py
 
 | 需求 | 推荐脚本 |
 |------|---------|
-| 全细胞整合 | `allcells_scvi_celltypist_scanvi_pipeline_20260115_v2_3_1.py` |
+| 全细胞整合 | `allcells_scvi_celltypist_scanvi_pipeline_20260121_v2_5_2.py` |
 | T细胞分析 | `t_scvi_celltypist_scanvi_20260108_v3_5_1.py` |
-| B细胞分析 | `bcell_scvi_celltypist_scanvi_pipeline_20260111_v3_5_1.py` |
-| 髓系分析 | `myeloid_scvi_celltypist_scanvi_pipeline_20260111_v3_5_1.py` |
+| B细胞分析 | `b_scvi_celltypist_scanvi_pipeline_v1.py` |
+| 髓系分析 | `myeloid_scvi_scanvi_v2_4_20260322.py` |
 | 基质分析 | `stromal_scvi_celltypist_scanvi_pipeline_20260110_v3_5_1.py` |
 | 上皮完整流程 | `complete_epithelial_analysis_pipeline_20260122_v2_1.py` |
 | 亚群聚类 | `universal_celltype_subcluster_pipeline_20260121_v4_1.py` |
 | cNMF分析 | `label_guided_cnmf_pipeline_20260114_v1_1.py` |
 | 双细胞检测 | `celltypist_doublet_detection_20260114_v1_1.py` |
 | 模型迁移 | `scarches_mapping_20260127_v1_2_1.py` |
+| scHPL 层级校验 🆕 | `lineage_merge_schpl_core_20260402.py` |
+| B 细胞组织比较 🆕 | `bcell_tissue_comparison_v2_6_4_20260412.R` |
+| T/NK 组织比较 🆕 | `tnk_tissue_comparison_v2_6_1_20260413.R` |
+| 髓系组织比较 🆕 | `myeloid_tissue_comparison_20260407_v1_1.R` |
+| 上皮组织比较 🆕 | `epithelial_tissue_comparison_v1_3_2_20260413.R` |
+| 通用组织比较 🆕 | `tissue_comparison_generic_wrapper_20260412.R` |
+| SCENIC GRN 🆕 | `scenic_core_20260410.R` |
+| Milo 差异丰度 🆕 | `bcell_paga_milo_20260412_v1_1.py` |
+| 表型–基因关联 🆕 | `phenotype_gene_pipeline_A_pseudobulk_hpo_enrichment.R` |
 
 ---
 
-**生成时间**: 2026-02-03
-**脚本总数**: 44个Python脚本 (未追踪文件)
+**生成时间**: 2026-04-13
+**脚本总数**: 58 个 Python 脚本 + 139 个 R 脚本 + 16 个 Notebook = 218 个文件
 **推荐版本**: 标记为 ✅ 的脚本为生产环境推荐版本
