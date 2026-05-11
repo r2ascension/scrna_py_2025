@@ -1,0 +1,1460 @@
+nohup: ignoring input
+======================================================================
+Complete Epithelial Cell Analysis Pipeline v2.1 - FIXED & OPTIMIZED
+======================================================================
+
+Library versions:
+   scanpy: 1.9.8
+   numpy: 1.24.4
+   pandas: 2.0.3
+
+✓ All libraries loaded successfully
+
+======================================================================
+Master Configuration Loaded
+======================================================================
+
+📁 Input: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/adata_Epithelial_bbknn.h5ad
+📁 Output: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline
+
+🔬 Pipeline Steps:
+   ✅ BBKNN Integration
+   ✅ Harmony Correction
+   ✅ cNMF - Uncorrected
+   ✅ cNMF - Harmony
+   ✅ GEP-Cluster Mapping
+
+🎯 Key Parameters:
+   cNMF K: 15
+   🚀 cNMF workers: 4 (multi-processing)
+   Harmony theta: 1.0
+   Cluster key: leiden_bbknn
+✓ Multi-processing helper function loaded
+
+✓ Environment initialized
+   Output structure created: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline
+Marker genes defined:
+   Total markers: 67
+   Force include: 67
+
+======================================================================
+Section 1: Data Loading & Preprocessing
+======================================================================
+
+Loading: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/adata_Epithelial_bbknn.h5ad
+✓ Data loaded
+   Cells: 278,930
+   Genes: 53,973
+
+Batch distribution (key: dataset):
+   Banovich_Kropski_2020: 9,139 cells (3.3%)
+   Barbry_Leroy_2020: 25,821 cells (9.3%)
+   Guanrui_Liao_2025: 3,998 cells (1.4%)
+   Jain_Misharin_2021_10Xv1: 8,596 cells (3.1%)
+   Jain_Misharin_2021_10Xv2: 19,972 cells (7.2%)
+   Jennifer_P_Wang_2021: 1,166 cells (0.4%)
+   Ji_Hoon_Ahn_2021: 15,350 cells (5.5%)
+   Kerstin_B_Meyer_2021: 62,054 cells (22.2%)
+   Lafyatis_Rojas_2019_10Xv1: 166 cells (0.1%)
+   Lafyatis_Rojas_2019_10Xv2: 679 cells (0.2%)
+   Maya_E_Kotas_2022: 45,673 cells (16.4%)
+   Meyer_2019: 1,891 cells (0.7%)
+   Misharin_2021: 9,040 cells (3.2%)
+   Misharin_Budinger_2018: 9,929 cells (3.6%)
+   Nawijn_2021: 25,651 cells (9.2%)
+   Ordovas_Montanes_2018: 5,425 cells (1.9%)
+   Seibold_2020_10Xv2: 3,910 cells (1.4%)
+   Seibold_2020_10Xv3: 3,710 cells (1.3%)
+   Tine_Wils_2024: 5,559 cells (2.0%)
+   Waradon_Sungnak_2020: 6,338 cells (2.3%)
+   Weiqing_Wang_2022: 12,507 cells (4.5%)
+   Xinyu_Xie_2024: 2,356 cells (0.8%)
+
+Filtering genes (min.cells=3)...
+   ✓ Removed 0 genes (0.0%)
+   ✓ Remaining: 53,973 genes
+
+Preserving raw counts...
+   ✓ Raw counts saved to layers['counts']
+
+Selecting HVGs (n=3000)...
+   ⚠️ Fallback to HVG without batch_key
+   HVGs: 3000
+   Force included: 67
+   Total kept: 3013
+
+Normalizing and log-transforming...
+WARNING: adata.X seems to be already log-transformed.
+   ✓ Full matrix processed
+WARNING: adata.X seems to be already log-transformed.
+   ✓ HVG subset created: 3013 genes
+   ✓ Set adata_hvg.raw = adata_full
+
+Running PCA (n=50)...
+   PC1-10: 34.57%
+   PC1-30: 43.71%
+   PC1-50: 47.77%
+
+💾 Saving preprocessing checkpoint...
+   ✓ Saved: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline/checkpoint_preprocessed.h5ad
+
+✅ Section 1 complete (640.8s)
+======================================================================
+
+======================================================================
+Section 2: BBKNN Batch Integration
+======================================================================
+
+BBKNN parameters:
+   batch_key: dataset
+   neighbors_within_batch: 3
+   n_pcs: 50
+
+Running BBKNN...
+   ✓ BBKNN complete
+
+Running UMAP (min_dist=0.5)...
+   ✓ UMAP complete
+
+Multi-resolution Leiden clustering...
+   Resolution 1.2: 21 clusters
+   Resolution 1.6: 27 clusters
+   Resolution 2.0: 29 clusters
+   Resolution 2.4: 38 clusters
+   Resolution 2.8: 39 clusters
+   ✓ Default: leiden_bbknn_res2.0
+
+Generating BBKNN visualizations...
+   ✓ Saved: bbknn_overview.png
+
+Backfilling results to full dataset...
+   ✓ Results backfilled
+
+💾 Saving BBKNN checkpoint...
+   ✓ Saved: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline/checkpoint_bbknn.h5ad
+
+✅ Section 2 complete (9833.1s)
+======================================================================
+harmonypy version: 0.0.10
+
+======================================================================
+Section 3: Harmony Batch Correction
+======================================================================
+
+Harmony strategy: Limited PC correction
+   Only correct first 30/50 PCs
+   theta=1.0 (lower=gentler)
+   lambda=6.0 (higher=conservative)
+
+Running Harmony...
+2025-12-03 19:29:11,331 - harmonypy - INFO - Computing initial centroids with sklearn.KMeans...
+2025-12-03 19:30:08,972 - harmonypy - INFO - sklearn.KMeans initialization complete.
+2025-12-03 19:30:10,660 - harmonypy - INFO - Iteration 1 of 20
+2025-12-03 19:33:26,349 - harmonypy - INFO - Iteration 2 of 20
+2025-12-03 19:36:55,610 - harmonypy - INFO - Iteration 3 of 20
+2025-12-03 19:40:22,520 - harmonypy - INFO - Iteration 4 of 20
+2025-12-03 19:45:07,432 - harmonypy - INFO - Iteration 5 of 20
+2025-12-03 19:49:30,781 - harmonypy - INFO - Converged after 5 iterations
+   ✓ Harmony complete
+   Combined: 30 corrected + 20 original PCs
+
+Computing UMAP on Harmony PCs...
+   ✓ UMAP complete
+
+Multi-resolution clustering...
+   Resolution 1.2: 45 clusters
+   Resolution 1.6: 55 clusters
+   Resolution 2.0: 65 clusters
+   Resolution 2.4: 69 clusters
+   Resolution 2.8: 83 clusters
+
+🔍 Running quality diagnostics...
+   ⚠️  Diagnostic test failed: Number of labels is 1. Valid values are 2 to n_samples - 1 (inclusive)
+
+Backfilling Harmony results...
+   ✓ Results backfilled
+
+💾 Saving Harmony checkpoint...
+   ✓ Saved: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline/checkpoint_harmony.h5ad
+
+✅ Section 3 complete (7389.9s)
+======================================================================
+cNMF already installed
+
+======================================================================
+Section 4: cNMF - Uncorrected (Multi-Processing)
+======================================================================
+
+cNMF parameters:
+   K values to test: [10, 15, 20, 25, 30]
+   Iterations per K: 100
+   HVG count: 2000
+   Selected K: 15
+   🚀 Workers: 4
+
+⏱️  Estimated time:
+   Single-threaded: 6973 min (116.2 hr)
+   With 4 workers: 1743 min (29.1 hr)
+   💡 Speedup: ~4.0x
+
+   ☕ Estimated memory: ~20 GB
+
+Preparing data...
+   ✓ Saved: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline/cnmf_results/epithelial_raw_counts.h5ad
+
+Step 1/4: Prepare...
+   ✓ Complete
+
+Step 2/4: Factorize with 4 parallel workers...
+   Launching 4 parallel workers...
+      Worker 0 started (PID: 1200940)
+      Worker 1 started (PID: 1200947)
+      Worker 2 started (PID: 1200960)
+      Worker 3 started (PID: 1200963)
+[Worker 0]. Starting task 0.
+[Worker 1]. Starting task 1.
+[Worker 2]. Starting task 2.
+[Worker 3]. Starting task 3.
+[Worker 0]. Starting task 4.
+[Worker 3]. Starting task 7.
+[Worker 1]. Starting task 5.
+[Worker 2]. Starting task 6.
+[Worker 0]. Starting task 8.
+[Worker 2]. Starting task 10.
+[Worker 3]. Starting task 11.
+[Worker 2]. Starting task 14.
+[Worker 0]. Starting task 12.
+[Worker 1]. Starting task 9.
+[Worker 3]. Starting task 15.
+[Worker 1]. Starting task 13.
+[Worker 0]. Starting task 16.
+[Worker 1]. Starting task 17.
+[Worker 2]. Starting task 18.
+[Worker 3]. Starting task 19.
+[Worker 0]. Starting task 20.
+[Worker 1]. Starting task 21.
+[Worker 2]. Starting task 22.
+[Worker 3]. Starting task 23.
+[Worker 2]. Starting task 26.
+[Worker 0]. Starting task 24.
+[Worker 1]. Starting task 25.
+[Worker 3]. Starting task 27.
+[Worker 2]. Starting task 30.
+[Worker 1]. Starting task 29.
+[Worker 0]. Starting task 28.
+[Worker 1]. Starting task 33.
+[Worker 2]. Starting task 34.
+[Worker 0]. Starting task 32.
+[Worker 3]. Starting task 31.
+[Worker 2]. Starting task 38.
+[Worker 0]. Starting task 36.
+[Worker 1]. Starting task 37.
+[Worker 3]. Starting task 35.
+[Worker 3]. Starting task 39.
+[Worker 1]. Starting task 41.
+[Worker 2]. Starting task 42.
+[Worker 0]. Starting task 40.
+[Worker 3]. Starting task 43.
+[Worker 2]. Starting task 46.
+[Worker 0]. Starting task 44.
+[Worker 1]. Starting task 45.
+[Worker 2]. Starting task 50.
+[Worker 3]. Starting task 47.
+[Worker 2]. Starting task 54.
+[Worker 0]. Starting task 48.
+[Worker 1]. Starting task 49.
+[Worker 0]. Starting task 52.
+[Worker 2]. Starting task 58.
+[Worker 3]. Starting task 51.
+[Worker 1]. Starting task 53.
+[Worker 2]. Starting task 62.
+[Worker 0]. Starting task 56.
+[Worker 1]. Starting task 57.
+[Worker 3]. Starting task 55.
+[Worker 2]. Starting task 66.
+[Worker 0]. Starting task 60.
+[Worker 3]. Starting task 59.
+[Worker 3]. Starting task 63.
+[Worker 1]. Starting task 61.
+[Worker 2]. Starting task 70.
+[Worker 0]. Starting task 64.
+[Worker 2]. Starting task 74.
+[Worker 0]. Starting task 68.
+[Worker 1]. Starting task 65.
+[Worker 2]. Starting task 78.
+[Worker 0]. Starting task 72.
+[Worker 1]. Starting task 69.
+[Worker 2]. Starting task 82.
+[Worker 3]. Starting task 67.
+[Worker 0]. Starting task 76.
+[Worker 3]. Starting task 71.
+[Worker 2]. Starting task 86.
+[Worker 0]. Starting task 80.
+[Worker 3]. Starting task 75.
+[Worker 1]. Starting task 73.
+[Worker 3]. Starting task 79.
+[Worker 2]. Starting task 90.
+[Worker 0]. Starting task 84.
+[Worker 1]. Starting task 77.
+[Worker 2]. Starting task 94.
+[Worker 3]. Starting task 83.
+[Worker 2]. Starting task 98.
+[Worker 3]. Starting task 87.
+[Worker 1]. Starting task 81.
+[Worker 0]. Starting task 88.
+[Worker 3]. Starting task 91.
+[Worker 2]. Starting task 102.
+[Worker 1]. Starting task 85.
+[Worker 0]. Starting task 92.
+[Worker 1]. Starting task 89.
+[Worker 3]. Starting task 95.
+[Worker 1]. Starting task 93.
+[Worker 0]. Starting task 96.
+[Worker 3]. Starting task 99.
+[Worker 0]. Starting task 100.
+[Worker 1]. Starting task 97.
+[Worker 2]. Starting task 106.
+[Worker 3]. Starting task 103.
+[Worker 1]. Starting task 101.
+[Worker 2]. Starting task 110.
+[Worker 1]. Starting task 105.
+[Worker 0]. Starting task 104.
+[Worker 2]. Starting task 114.
+[Worker 3]. Starting task 107.
+[Worker 1]. Starting task 109.
+[Worker 0]. Starting task 108.
+[Worker 0]. Starting task 112.
+[Worker 3]. Starting task 111.
+[Worker 1]. Starting task 113.
+[Worker 2]. Starting task 118.[Worker 3]. Starting task 115.
+
+[Worker 0]. Starting task 116.
+[Worker 1]. Starting task 117.
+[Worker 2]. Starting task 122.
+[Worker 0]. Starting task 120.
+[Worker 1]. Starting task 121.
+[Worker 2]. Starting task 126.
+[Worker 0]. Starting task 124.
+[Worker 3]. Starting task 119.
+[Worker 1]. Starting task 125.
+[Worker 2]. Starting task 130.
+[Worker 0]. Starting task 128.
+[Worker 0]. Starting task 132.
+[Worker 1]. Starting task 129.
+[Worker 3]. Starting task 123.
+[Worker 2]. Starting task 134.
+[Worker 1]. Starting task 133.
+[Worker 3]. Starting task 127.
+[Worker 2]. Starting task 138.
+[Worker 0]. Starting task 136.
+[Worker 1]. Starting task 137.
+[Worker 0]. Starting task 140.
+[Worker 2]. Starting task 142.
+[Worker 3]. Starting task 131.
+[Worker 1]. Starting task 141.
+[Worker 0]. Starting task 144.
+[Worker 1]. Starting task 145.
+[Worker 3]. Starting task 135.
+[Worker 2]. Starting task 146.
+[Worker 0]. Starting task 148.
+[Worker 3]. Starting task 139.
+[Worker 2]. Starting task 150.
+[Worker 1]. Starting task 149.
+[Worker 0]. Starting task 152.
+[Worker 3]. Starting task 143.
+[Worker 2]. Starting task 154.
+[Worker 1]. Starting task 153.
+[Worker 0]. Starting task 156.
+[Worker 2]. Starting task 158.
+[Worker 3]. Starting task 147.
+[Worker 0]. Starting task 160.
+[Worker 3]. Starting task 151.
+[Worker 0]. Starting task 164.
+[Worker 1]. Starting task 157.
+[Worker 3]. Starting task 155.
+[Worker 2]. Starting task 162.
+[Worker 0]. Starting task 168.
+[Worker 1]. Starting task 161.
+[Worker 2]. Starting task 166.
+[Worker 1]. Starting task 165.
+[Worker 3]. Starting task 159.
+[Worker 0]. Starting task 172.
+[Worker 2]. Starting task 170.
+[Worker 1]. Starting task 169.
+[Worker 3]. Starting task 163.
+[Worker 0]. Starting task 176.
+[Worker 2]. Starting task 174.
+[Worker 1]. Starting task 173.
+[Worker 0]. Starting task 180.
+[Worker 2]. Starting task 178.
+[Worker 2]. Starting task 182.
+[Worker 1]. Starting task 177.
+[Worker 2]. Starting task 186.
+[Worker 1]. Starting task 181.
+[Worker 3]. Starting task 167.
+[Worker 1]. Starting task 185.
+[Worker 3]. Starting task 171.
+[Worker 1]. Starting task 189.
+[Worker 2]. Starting task 190.
+[Worker 3]. Starting task 175.
+[Worker 2]. Starting task 194.
+[Worker 3]. Starting task 179.
+[Worker 1]. Starting task 193.
+[Worker 2]. Starting task 198.
+[Worker 0]. Starting task 184.
+[Worker 1]. Starting task 197.
+[Worker 3]. Starting task 183.
+[Worker 1]. Starting task 201.
+[Worker 2]. Starting task 202.
+[Worker 0]. Starting task 188.
+[Worker 3]. Starting task 187.
+[Worker 0]. Starting task 192.
+[Worker 3]. Starting task 191.
+[Worker 1]. Starting task 205.
+[Worker 0]. Starting task 196.
+[Worker 1]. Starting task 209.
+[Worker 0]. Starting task 200.
+[Worker 3]. Starting task 195.
+[Worker 1]. Starting task 213.
+[Worker 3]. Starting task 199.
+[Worker 0]. Starting task 204.
+[Worker 3]. Starting task 203.
+[Worker 1]. Starting task 217.
+[Worker 2]. Starting task 206.
+[Worker 3]. Starting task 207.
+[Worker 1]. Starting task 221.
+[Worker 2]. Starting task 210.
+[Worker 3]. Starting task 211.
+[Worker 1]. Starting task 225.
+[Worker 0]. Starting task 208.
+[Worker 2]. Starting task 214.
+[Worker 3]. Starting task 215.
+[Worker 1]. Starting task 229.
+[Worker 2]. Starting task 218.
+[Worker 0]. Starting task 212.
+[Worker 1]. Starting task 233.
+[Worker 3]. Starting task 219.
+[Worker 0]. Starting task 216.
+[Worker 1]. Starting task 237.
+[Worker 2]. Starting task 222.
+[Worker 1]. Starting task 241.
+[Worker 3]. Starting task 223.
+[Worker 2]. Starting task 226.
+[Worker 0]. Starting task 220.
+[Worker 3]. Starting task 227.
+[Worker 1]. Starting task 245.
+[Worker 3]. Starting task 231.
+[Worker 3]. Starting task 235.
+[Worker 2]. Starting task 230.
+[Worker 3]. Starting task 239.
+[Worker 0]. Starting task 224.
+[Worker 1]. Starting task 249.
+[Worker 3]. Starting task 243.
+[Worker 1]. Starting task 253.
+[Worker 3]. Starting task 247.
+[Worker 1]. Starting task 257.
+[Worker 2]. Starting task 234.
+[Worker 0]. Starting task 228.
+[Worker 1]. Starting task 261.
+[Worker 0]. Starting task 232.
+[Worker 1]. Starting task 265.
+[Worker 2]. Starting task 238.
+[Worker 3]. Starting task 251.
+[Worker 0]. Starting task 236.
+[Worker 1]. Starting task 269.
+[Worker 3]. Starting task 255.
+[Worker 3]. Starting task 259.
+[Worker 0]. Starting task 240.
+[Worker 1]. Starting task 273.
+[Worker 2]. Starting task 242.
+[Worker 3]. Starting task 263.
+[Worker 3]. Starting task 267.
+[Worker 2]. Starting task 246.
+[Worker 1]. Starting task 277.
+[Worker 0]. Starting task 244.
+[Worker 3]. Starting task 271.
+[Worker 1]. Starting task 281.
+[Worker 2]. Starting task 250.
+[Worker 3]. Starting task 275.
+[Worker 0]. Starting task 248.
+[Worker 2]. Starting task 254.
+[Worker 3]. Starting task 279.
+[Worker 2]. Starting task 258.
+[Worker 1]. Starting task 285.
+[Worker 2]. Starting task 262.
+[Worker 3]. Starting task 283.
+[Worker 0]. Starting task 252.
+[Worker 1]. Starting task 289.
+[Worker 0]. Starting task 256.
+[Worker 1]. Starting task 293.
+[Worker 3]. Starting task 287.
+[Worker 2]. Starting task 266.
+[Worker 0]. Starting task 260.
+[Worker 1]. Starting task 297.
+[Worker 0]. Starting task 264.
+[Worker 3]. Starting task 291.
+[Worker 2]. Starting task 270.
+[Worker 1]. Starting task 301.
+[Worker 2]. Starting task 274.
+[Worker 0]. Starting task 268.
+[Worker 0]. Starting task 272.
+[Worker 2]. Starting task 278.
+[Worker 2]. Starting task 282.
+[Worker 0]. Starting task 276.
+[Worker 1]. Starting task 305.
+[Worker 3]. Starting task 295.
+[Worker 2]. Starting task 286.
+[Worker 0]. Starting task 280.
+[Worker 3]. Starting task 299.
+[Worker 2]. Starting task 290.
+[Worker 1]. Starting task 309.
+[Worker 3]. Starting task 303.
+[Worker 0]. Starting task 284.
+[Worker 2]. Starting task 294.
+[Worker 1]. Starting task 313.
+[Worker 2]. Starting task 298.
+[Worker 0]. Starting task 288.
+[Worker 2]. Starting task 302.
+[Worker 0]. Starting task 292.
+[Worker 1]. Starting task 317.
+[Worker 2]. Starting task 306.
+[Worker 0]. Starting task 296.
+[Worker 3]. Starting task 307.
+[Worker 0]. Starting task 300.
+[Worker 2]. Starting task 310.
+[Worker 0]. Starting task 304.
+[Worker 3]. Starting task 311.
+[Worker 0]. Starting task 308.
+[Worker 3]. Starting task 315.
+[Worker 0]. Starting task 312.
+[Worker 1]. Starting task 321.
+[Worker 0]. Starting task 316.
+[Worker 2]. Starting task 314.
+[Worker 3]. Starting task 319.
+[Worker 1]. Starting task 325.
+[Worker 2]. Starting task 318.
+[Worker 0]. Starting task 320.
+[Worker 0]. Starting task 324.
+[Worker 1]. Starting task 329.
+[Worker 3]. Starting task 323.
+[Worker 0]. Starting task 328.
+[Worker 1]. Starting task 333.
+[Worker 2]. Starting task 322.
+[Worker 2]. Starting task 326.
+[Worker 3]. Starting task 327.
+[Worker 0]. Starting task 332.
+[Worker 1]. Starting task 337.
+[Worker 2]. Starting task 330.
+[Worker 3]. Starting task 331.
+[Worker 0]. Starting task 336.
+[Worker 1]. Starting task 341.
+[Worker 2]. Starting task 334.
+[Worker 1]. Starting task 345.
+[Worker 2]. Starting task 338.
+[Worker 1]. Starting task 349.
+[Worker 3]. Starting task 335.
+[Worker 1]. Starting task 353.
+[Worker 0]. Starting task 340.
+[Worker 2]. Starting task 342.
+[Worker 1]. Starting task 357.
+[Worker 0]. Starting task 344.
+[Worker 2]. Starting task 346.
+[Worker 3]. Starting task 339.
+[Worker 1]. Starting task 361.
+[Worker 0]. Starting task 348.
+[Worker 2]. Starting task 350.
+[Worker 0]. Starting task 352.
+[Worker 0]. Starting task 356.
+[Worker 1]. Starting task 365.
+[Worker 3]. Starting task 343.
+[Worker 2]. Starting task 354.
+[Worker 1]. Starting task 369.
+[Worker 3]. Starting task 347.
+[Worker 0]. Starting task 360.
+[Worker 3]. Starting task 351.
+[Worker 2]. Starting task 358.
+[Worker 2]. Starting task 362.
+[Worker 3]. Starting task 355.
+[Worker 1]. Starting task 373.
+[Worker 0]. Starting task 364.
+[Worker 2]. Starting task 366.
+[Worker 1]. Starting task 377.
+[Worker 3]. Starting task 359.
+[Worker 1]. Starting task 381.
+[Worker 2]. Starting task 370.
+[Worker 0]. Starting task 368.
+[Worker 1]. Starting task 385.
+[Worker 0]. Starting task 372.
+[Worker 2]. Starting task 374.
+[Worker 3]. Starting task 363.
+[Worker 1]. Starting task 389.
+[Worker 2]. Starting task 378.
+[Worker 0]. Starting task 376.
+[Worker 2]. Starting task 382.
+[Worker 1]. Starting task 393.
+[Worker 3]. Starting task 367.
+[Worker 2]. Starting task 386.
+[Worker 0]. Starting task 380.
+[Worker 1]. Starting task 397.
+[Worker 3]. Starting task 371.
+[Worker 0]. Starting task 384.
+[Worker 1]. Starting task 401.
+[Worker 0]. Starting task 388.
+[Worker 2]. Starting task 390.
+[Worker 3]. Starting task 375.
+[Worker 2]. Starting task 394.
+[Worker 0]. Starting task 392.
+[Worker 1]. Starting task 405.
+[Worker 3]. Starting task 379.
+[Worker 0]. Starting task 396.
+[Worker 0]. Starting task 400.
+[Worker 2]. Starting task 398.
+[Worker 1]. Starting task 409.
+[Worker 3]. Starting task 383.
+[Worker 2]. Starting task 402.
+[Worker 3]. Starting task 387.
+[Worker 0]. Starting task 404.
+[Worker 1]. Starting task 413.
+[Worker 3]. Starting task 391.
+[Worker 2]. Starting task 406.
+[Worker 1]. Starting task 417.
+[Worker 3]. Starting task 395.
+[Worker 0]. Starting task 408.
+[Worker 2]. Starting task 410.
+[Worker 3]. Starting task 399.
+[Worker 1]. Starting task 421.
+[Worker 2]. Starting task 414.
+[Worker 3]. Starting task 403.
+[Worker 0]. Starting task 412.
+[Worker 1]. Starting task 425.
+[Worker 2]. Starting task 418.
+[Worker 3]. Starting task 407.
+[Worker 1]. Starting task 429.
+[Worker 3]. Starting task 411.
+[Worker 2]. Starting task 422.
+[Worker 0]. Starting task 416.
+[Worker 1]. Starting task 433.
+[Worker 2]. Starting task 426.
+[Worker 0]. Starting task 420.
+[Worker 3]. Starting task 415.
+[Worker 1]. Starting task 437.
+[Worker 2]. Starting task 430.
+[Worker 0]. Starting task 424.
+[Worker 0]. Starting task 428.
+[Worker 3]. Starting task 419.
+[Worker 2]. Starting task 434.
+[Worker 0]. Starting task 432.
+[Worker 1]. Starting task 441.
+[Worker 2]. Starting task 438.
+[Worker 0]. Starting task 436.
+[Worker 1]. Starting task 445.
+[Worker 3]. Starting task 423.
+[Worker 2]. Starting task 442.
+[Worker 0]. Starting task 440.
+[Worker 3]. Starting task 427.
+[Worker 2]. Starting task 446.
+[Worker 0]. Starting task 444.
+[Worker 1]. Starting task 449.
+[Worker 3]. Starting task 431.
+[Worker 2]. Starting task 450.
+[Worker 1]. Starting task 453.
+[Worker 0]. Starting task 448.
+[Worker 1]. Starting task 457.
+[Worker 3]. Starting task 435.
+[Worker 2]. Starting task 454.
+[Worker 0]. Starting task 452.
+[Worker 1]. Starting task 461.
+[Worker 2]. Starting task 458.
+[Worker 1]. Starting task 465.
+[Worker 0]. Starting task 456.
+[Worker 0]. Starting task 460.
+[Worker 3]. Starting task 439.
+[Worker 1]. Starting task 469.
+[Worker 3]. Starting task 443.
+[Worker 2]. Starting task 462.
+[Worker 0]. Starting task 464.
+[Worker 1]. Starting task 473.
+[Worker 3]. Starting task 447.
+[Worker 0]. Starting task 468.
+[Worker 0]. Starting task 472.
+[Worker 1]. Starting task 477.
+[Worker 3]. Starting task 451.
+[Worker 1]. Starting task 481.
+[Worker 2]. Starting task 466.
+[Worker 0]. Starting task 476.
+[Worker 3]. Starting task 455.
+[Worker 1]. Starting task 485.
+[Worker 2]. Starting task 470.
+[Worker 0]. Starting task 480.
+[Worker 3]. Starting task 459.
+[Worker 2]. Starting task 474.
+[Worker 3]. Starting task 463.
+[Worker 1]. Starting task 489.
+[Worker 0]. Starting task 484.
+[Worker 2]. Starting task 478.
+[Worker 0]. Starting task 488.
+[Worker 3]. Starting task 467.
+[Worker 1]. Starting task 493.
+[Worker 0]. Starting task 492.
+[Worker 1]. Starting task 497.
+[Worker 3]. Starting task 471.
+[Worker 2]. Starting task 482.
+[Worker 2]. Starting task 486.
+[Worker 0]. Starting task 496.
+[Worker 3]. Starting task 475.
+[Worker 3]. Starting task 479.
+[Worker 2]. Starting task 490.
+      Worker 0 finished
+      Worker 1 finished
+[Worker 2]. Starting task 494.
+[Worker 3]. Starting task 483.
+[Worker 2]. Starting task 498.
+[Worker 3]. Starting task 487.
+      Worker 2 finished
+[Worker 3]. Starting task 491.
+[Worker 3]. Starting task 495.
+[Worker 3]. Starting task 499.
+      Worker 3 finished
+   ✓ All 4 workers completed
+   ✓ Complete (281.0 min)
+   💡 Actual speedup: 24.8x
+
+Step 3/4: Combine...
+Combining factorizations for k=10.
+Combining factorizations for k=15.
+Combining factorizations for k=20.
+Combining factorizations for k=25.
+Combining factorizations for k=30.
+   ✓ Complete
+
+Step 4/4: Consensus clustering...
+   K=10 complete
+   K=15 complete
+   K=20 complete
+   K=25 complete
+   K=30 complete
+
+Loading results for K=15...
+   ✓ Loaded: (278930, 15)
+   Column names: [1, 2, 3]...
+
+Adding GEP scores to adata (using column position)...
+   ✓ Added 15 GEP columns
+
+💾 Saving cNMF (uncorrected) checkpoint...
+   ✓ Saved: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline/checkpoint_cnmf_nocorr.h5ad
+
+✅ Section 4 complete (509.2 min)
+======================================================================
+
+======================================================================
+Section 5: cNMF - Harmony Corrected (Multi-Processing)
+======================================================================
+
+Preparing Harmony-corrected data...
+   Strategy: Harmony-guided kNN smoothing
+   🚀 Workers: 4
+   ⏱️  Estimated: 1743 min (29.1 hr)
+
+Computing Harmony neighbor graph...
+   ✓ Neighbor graph computed
+
+Applying kNN smoothing...
+   ✓ Smoothing complete
+   ✓ Saved: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline/cnmf_results/epithelial_harmony_smoothed_counts.h5ad
+
+Creating TP10K matrix...
+   ✓ Saved: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline/cnmf_results/epithelial_tp10k.h5ad
+   ✓ Saved HVG list: 3013 genes
+
+Step 1/4: Prepare...
+   ✓ Complete
+
+Step 2/4: Factorize with 4 parallel workers...
+   Launching 4 parallel workers...
+      Worker 0 started (PID: 1270459)
+      Worker 1 started (PID: 1270469)
+      Worker 2 started (PID: 1270470)
+      Worker 3 started (PID: 1270471)
+[Worker 0]. Starting task 0.
+[Worker 1]. Starting task 1.
+[Worker 2]. Starting task 2.
+[Worker 3]. Starting task 3.
+[Worker 0]. Starting task 4.
+[Worker 1]. Starting task 5.
+[Worker 0]. Starting task 8.
+[Worker 3]. Starting task 7.
+[Worker 1]. Starting task 9.
+[Worker 0]. Starting task 12.
+[Worker 2]. Starting task 6.
+[Worker 3]. Starting task 11.
+[Worker 1]. Starting task 13.
+[Worker 3]. Starting task 15.
+[Worker 2]. Starting task 10.
+[Worker 1]. Starting task 17.
+[Worker 0]. Starting task 16.
+[Worker 2]. Starting task 14.
+[Worker 3]. Starting task 19.
+[Worker 2]. Starting task 18.
+[Worker 0]. Starting task 20.
+[Worker 3]. Starting task 23.
+[Worker 1]. Starting task 21.
+[Worker 2]. Starting task 22.
+[Worker 0]. Starting task 24.
+[Worker 1]. Starting task 25.
+[Worker 3]. Starting task 27.
+[Worker 0]. Starting task 28.
+[Worker 1]. Starting task 29.
+[Worker 2]. Starting task 26.
+[Worker 0]. Starting task 32.
+[Worker 1]. Starting task 33.
+[Worker 0]. Starting task 36.
+[Worker 2]. Starting task 30.
+[Worker 3]. Starting task 31.
+[Worker 1]. Starting task 37.
+[Worker 0]. Starting task 40.
+[Worker 1]. Starting task 41.
+[Worker 2]. Starting task 34.
+[Worker 1]. Starting task 45.
+[Worker 3]. Starting task 35.
+[Worker 0]. Starting task 44.
+[Worker 2]. Starting task 38.
+[Worker 1]. Starting task 49.
+[Worker 2]. Starting task 42.
+[Worker 0]. Starting task 48.
+[Worker 3]. Starting task 39.
+[Worker 1]. Starting task 53.
+[Worker 3]. Starting task 43.
+[Worker 2]. Starting task 46.
+[Worker 0]. Starting task 52.
+[Worker 3]. Starting task 47.
+[Worker 1]. Starting task 57.
+[Worker 3]. Starting task 51.
+[Worker 3]. Starting task 55.
+[Worker 2]. Starting task 50.
+[Worker 0]. Starting task 56.
+[Worker 3]. Starting task 59.
+[Worker 1]. Starting task 61.
+[Worker 2]. Starting task 54.
+[Worker 0]. Starting task 60.
+[Worker 2]. Starting task 58.
+[Worker 3]. Starting task 63.
+[Worker 1]. Starting task 65.
+[Worker 0]. Starting task 64.
+[Worker 2]. Starting task 62.
+[Worker 3]. Starting task 67.
+[Worker 1]. Starting task 69.
+[Worker 3]. Starting task 71.
+[Worker 2]. Starting task 66.
+[Worker 0]. Starting task 68.
+[Worker 1]. Starting task 73.
+[Worker 2]. Starting task 70.
+[Worker 0]. Starting task 72.
+[Worker 3]. Starting task 75.
+[Worker 1]. Starting task 77.
+[Worker 1]. Starting task 81.
+[Worker 0]. Starting task 76.
+[Worker 3]. Starting task 79.
+[Worker 2]. Starting task 74.
+[Worker 2]. Starting task 78.
+[Worker 1]. Starting task 85.
+[Worker 0]. Starting task 80.
+[Worker 1]. Starting task 89.
+[Worker 2]. Starting task 82.
+[Worker 3]. Starting task 83.
+[Worker 1]. Starting task 93.
+[Worker 0]. Starting task 84.
+[Worker 1]. Starting task 97.
+[Worker 0]. Starting task 88.
+[Worker 1]. Starting task 101.
+[Worker 0]. Starting task 92.
+[Worker 2]. Starting task 86.
+[Worker 3]. Starting task 87.
+[Worker 3]. Starting task 91.
+[Worker 3]. Starting task 95.
+[Worker 0]. Starting task 96.
+[Worker 2]. Starting task 90.
+[Worker 0]. Starting task 100.
+[Worker 3]. Starting task 99.
+[Worker 2]. Starting task 94.
+[Worker 1]. Starting task 105.
+[Worker 2]. Starting task 98.
+[Worker 3]. Starting task 103.
+[Worker 0]. Starting task 104.
+[Worker 2]. Starting task 102.
+[Worker 0]. Starting task 108.
+[Worker 1]. Starting task 109.
+[Worker 2]. Starting task 106.
+[Worker 1]. Starting task 113.
+[Worker 2]. Starting task 110.
+[Worker 0]. Starting task 112.
+[Worker 3]. Starting task 107.
+[Worker 2]. Starting task 114.
+[Worker 0]. Starting task 116.
+[Worker 3]. Starting task 111.
+[Worker 2]. Starting task 118.
+[Worker 2]. Starting task 122.
+[Worker 3]. Starting task 115.
+[Worker 1]. Starting task 117.
+[Worker 3]. Starting task 119.
+[Worker 2]. Starting task 126.
+[Worker 0]. Starting task 120.
+[Worker 3]. Starting task 123.
+[Worker 3]. Starting task 127.
+[Worker 0]. Starting task 124.
+[Worker 1]. Starting task 121.
+[Worker 2]. Starting task 130.
+[Worker 1]. Starting task 125.
+[Worker 2]. Starting task 134.
+[Worker 1]. Starting task 129.
+[Worker 0]. Starting task 128.
+[Worker 3]. Starting task 131.
+[Worker 2]. Starting task 138.
+[Worker 1]. Starting task 133.
+[Worker 3]. Starting task 135.
+[Worker 2]. Starting task 142.
+[Worker 0]. Starting task 132.
+[Worker 3]. Starting task 139.
+[Worker 1]. Starting task 137.
+[Worker 0]. Starting task 136.
+[Worker 2]. Starting task 146.
+[Worker 0]. Starting task 140.
+[Worker 2]. Starting task 150.
+[Worker 0]. Starting task 144.
+[Worker 2]. Starting task 154.
+[Worker 3]. Starting task 143.
+[Worker 1]. Starting task 141.
+[Worker 2]. Starting task 158.
+[Worker 1]. Starting task 145.
+[Worker 3]. Starting task 147.
+[Worker 0]. Starting task 148.
+[Worker 2]. Starting task 162.
+[Worker 3]. Starting task 151.
+[Worker 0]. Starting task 152.
+[Worker 2]. Starting task 166.
+[Worker 3]. Starting task 155.
+[Worker 2]. Starting task 170.
+[Worker 0]. Starting task 156.
+[Worker 3]. Starting task 159.
+[Worker 2]. Starting task 174.
+[Worker 1]. Starting task 149.
+[Worker 2]. Starting task 178.
+[Worker 3]. Starting task 163.
+[Worker 1]. Starting task 153.
+[Worker 3]. Starting task 167.
+[Worker 2]. Starting task 182.
+[Worker 0]. Starting task 160.
+[Worker 1]. Starting task 157.
+[Worker 3]. Starting task 171.
+[Worker 2]. Starting task 186.
+[Worker 0]. Starting task 164.
+[Worker 1]. Starting task 161.
+[Worker 2]. Starting task 190.
+[Worker 1]. Starting task 165.
+[Worker 0]. Starting task 168.
+[Worker 1]. Starting task 169.
+[Worker 2]. Starting task 194.
+[Worker 1]. Starting task 173.
+[Worker 3]. Starting task 175.
+[Worker 2]. Starting task 198.
+[Worker 1]. Starting task 177.
+[Worker 0]. Starting task 172.
+[Worker 1]. Starting task 181.
+[Worker 2]. Starting task 202.
+[Worker 3]. Starting task 179.
+[Worker 1]. Starting task 185.
+[Worker 0]. Starting task 176.
+[Worker 3]. Starting task 183.
+[Worker 2]. Starting task 206.
+[Worker 1]. Starting task 189.
+[Worker 0]. Starting task 180.
+[Worker 3]. Starting task 187.
+[Worker 1]. Starting task 193.
+[Worker 0]. Starting task 184.
+[Worker 2]. Starting task 210.
+[Worker 3]. Starting task 191.
+[Worker 0]. Starting task 188.
+[Worker 1]. Starting task 197.
+[Worker 2]. Starting task 214.
+[Worker 1]. Starting task 201.
+[Worker 2]. Starting task 218.
+[Worker 1]. Starting task 205.
+[Worker 3]. Starting task 195.
+[Worker 0]. Starting task 192.
+[Worker 2]. Starting task 222.
+[Worker 3]. Starting task 199.
+[Worker 1]. Starting task 209.
+[Worker 2]. Starting task 226.
+[Worker 1]. Starting task 213.
+[Worker 0]. Starting task 196.
+[Worker 3]. Starting task 203.
+[Worker 0]. Starting task 200.
+[Worker 0]. Starting task 204.
+[Worker 3]. Starting task 207.
+[Worker 2]. Starting task 230.
+[Worker 1]. Starting task 217.
+[Worker 3]. Starting task 211.
+[Worker 2]. Starting task 234.
+[Worker 0]. Starting task 208.
+[Worker 1]. Starting task 221.
+[Worker 2]. Starting task 238.
+[Worker 0]. Starting task 212.
+[Worker 3]. Starting task 215.
+[Worker 1]. Starting task 225.
+[Worker 2]. Starting task 242.
+[Worker 3]. Starting task 219.
+[Worker 0]. Starting task 216.
+[Worker 1]. Starting task 229.
+[Worker 2]. Starting task 246.
+[Worker 1]. Starting task 233.
+[Worker 2]. Starting task 250.
+[Worker 3]. Starting task 223.
+[Worker 1]. Starting task 237.
+[Worker 2]. Starting task 254.
+[Worker 3]. Starting task 227.
+[Worker 1]. Starting task 241.
+[Worker 3]. Starting task 231.
+[Worker 0]. Starting task 220.
+[Worker 1]. Starting task 245.
+[Worker 2]. Starting task 258.
+[Worker 3]. Starting task 235.
+[Worker 0]. Starting task 224.
+[Worker 3]. Starting task 239.
+[Worker 0]. Starting task 228.
+[Worker 1]. Starting task 249.
+[Worker 3]. Starting task 243.
+[Worker 0]. Starting task 232.
+[Worker 2]. Starting task 262.
+[Worker 0]. Starting task 236.
+[Worker 1]. Starting task 253.
+[Worker 2]. Starting task 266.
+[Worker 3]. Starting task 247.
+[Worker 0]. Starting task 240.
+[Worker 3]. Starting task 251.
+[Worker 1]. Starting task 257.
+[Worker 2]. Starting task 270.
+[Worker 0]. Starting task 244.
+[Worker 3]. Starting task 255.
+[Worker 1]. Starting task 261.
+[Worker 2]. Starting task 274.
+[Worker 1]. Starting task 265.
+[Worker 0]. Starting task 248.
+[Worker 2]. Starting task 278.
+[Worker 3]. Starting task 259.
+[Worker 2]. Starting task 282.
+[Worker 1]. Starting task 269.
+[Worker 0]. Starting task 252.
+[Worker 1]. Starting task 273.
+[Worker 2]. Starting task 286.
+[Worker 0]. Starting task 256.
+[Worker 2]. Starting task 290.
+[Worker 0]. Starting task 260.
+[Worker 1]. Starting task 277.
+[Worker 3]. Starting task 263.
+[Worker 1]. Starting task 281.
+[Worker 0]. Starting task 264.
+[Worker 2]. Starting task 294.
+[Worker 1]. Starting task 285.
+[Worker 0]. Starting task 268.
+[Worker 2]. Starting task 298.
+[Worker 3]. Starting task 267.
+[Worker 1]. Starting task 289.
+[Worker 0]. Starting task 272.
+[Worker 2]. Starting task 302.
+[Worker 1]. Starting task 293.
+[Worker 3]. Starting task 271.
+[Worker 1]. Starting task 297.
+[Worker 0]. Starting task 276.
+[Worker 1]. Starting task 301.
+[Worker 2]. Starting task 306.
+[Worker 0]. Starting task 280.
+[Worker 2]. Starting task 310.
+[Worker 0]. Starting task 284.
+[Worker 2]. Starting task 314.
+[Worker 0]. Starting task 288.
+[Worker 1]. Starting task 305.
+[Worker 3]. Starting task 275.
+[Worker 3]. Starting task 279.
+[Worker 0]. Starting task 292.
+[Worker 1]. Starting task 309.
+[Worker 0]. Starting task 296.
+[Worker 0]. Starting task 300.
+[Worker 0]. Starting task 304.
+[Worker 0]. Starting task 308.
+[Worker 2]. Starting task 318.
+[Worker 1]. Starting task 313.
+[Worker 3]. Starting task 283.
+[Worker 0]. Starting task 312.
+[Worker 1]. Starting task 317.
+[Worker 3]. Starting task 287.
+[Worker 2]. Starting task 322.
+[Worker 0]. Starting task 316.
+[Worker 2]. Starting task 326.
+[Worker 3]. Starting task 291.
+[Worker 3]. Starting task 295.
+[Worker 1]. Starting task 321.
+[Worker 3]. Starting task 299.
+[Worker 0]. Starting task 320.
+[Worker 3]. Starting task 303.
+[Worker 1]. Starting task 325.
+[Worker 2]. Starting task 330.
+[Worker 1]. Starting task 329.
+[Worker 0]. Starting task 324.
+[Worker 2]. Starting task 334.
+[Worker 0]. Starting task 328.
+[Worker 1]. Starting task 333.
+[Worker 2]. Starting task 338.
+[Worker 0]. Starting task 332.
+[Worker 2]. Starting task 342.
+[Worker 0]. Starting task 336.
+[Worker 1]. Starting task 337.
+[Worker 2]. Starting task 346.
+[Worker 2]. Starting task 350.
+[Worker 1]. Starting task 341.
+[Worker 2]. Starting task 354.
+[Worker 3]. Starting task 307.
+[Worker 1]. Starting task 345.
+[Worker 2]. Starting task 358.
+[Worker 3]. Starting task 311.
+[Worker 2]. Starting task 362.
+[Worker 1]. Starting task 349.
+[Worker 3]. Starting task 315.
+[Worker 2]. Starting task 366.
+[Worker 0]. Starting task 340.
+[Worker 2]. Starting task 370.
+[Worker 1]. Starting task 353.
+[Worker 0]. Starting task 344.
+[Worker 3]. Starting task 319.
+[Worker 1]. Starting task 357.
+[Worker 2]. Starting task 374.
+[Worker 0]. Starting task 348.
+[Worker 1]. Starting task 361.
+[Worker 0]. Starting task 352.
+[Worker 2]. Starting task 378.
+[Worker 1]. Starting task 365.
+[Worker 3]. Starting task 323.
+[Worker 0]. Starting task 356.
+[Worker 3]. Starting task 327.
+[Worker 1]. Starting task 369.
+[Worker 0]. Starting task 360.
+[Worker 2]. Starting task 382.
+[Worker 0]. Starting task 364.
+[Worker 1]. Starting task 373.
+[Worker 0]. Starting task 368.
+[Worker 2]. Starting task 386.
+[Worker 3]. Starting task 331.
+[Worker 3]. Starting task 335.
+[Worker 1]. Starting task 377.
+[Worker 3]. Starting task 339.
+[Worker 0]. Starting task 372.
+[Worker 3]. Starting task 343.
+[Worker 1]. Starting task 381.
+[Worker 2]. Starting task 390.
+[Worker 0]. Starting task 376.
+[Worker 3]. Starting task 347.
+[Worker 1]. Starting task 385.
+[Worker 0]. Starting task 380.
+[Worker 3]. Starting task 351.
+[Worker 3]. Starting task 355.
+[Worker 1]. Starting task 389.
+[Worker 0]. Starting task 384.
+[Worker 3]. Starting task 359.
+[Worker 2]. Starting task 394.
+[Worker 1]. Starting task 393.
+[Worker 3]. Starting task 363.
+[Worker 2]. Starting task 398.
+[Worker 0]. Starting task 388.
+[Worker 1]. Starting task 397.
+[Worker 3]. Starting task 367.
+[Worker 2]. Starting task 402.
+[Worker 0]. Starting task 392.
+[Worker 1]. Starting task 401.
+[Worker 3]. Starting task 371.
+[Worker 0]. Starting task 396.
+[Worker 0]. Starting task 400.
+[Worker 3]. Starting task 375.
+[Worker 2]. Starting task 406.
+[Worker 1]. Starting task 405.
+[Worker 3]. Starting task 379.
+[Worker 2]. Starting task 410.
+[Worker 0]. Starting task 404.
+[Worker 2]. Starting task 414.
+[Worker 1]. Starting task 409.
+[Worker 2]. Starting task 418.
+[Worker 0]. Starting task 408.
+[Worker 3]. Starting task 383.
+[Worker 2]. Starting task 422.
+[Worker 0]. Starting task 412.
+[Worker 3]. Starting task 387.
+[Worker 1]. Starting task 413.
+[Worker 2]. Starting task 426.
+[Worker 3]. Starting task 391.
+[Worker 0]. Starting task 416.
+[Worker 3]. Starting task 395.
+[Worker 2]. Starting task 430.
+[Worker 1]. Starting task 417.
+[Worker 3]. Starting task 399.
+[Worker 0]. Starting task 420.
+[Worker 3]. Starting task 403.
+[Worker 2]. Starting task 434.
+[Worker 1]. Starting task 421.
+[Worker 0]. Starting task 424.
+[Worker 3]. Starting task 407.
+[Worker 1]. Starting task 425.
+[Worker 0]. Starting task 428.
+[Worker 2]. Starting task 438.
+[Worker 3]. Starting task 411.
+[Worker 1]. Starting task 429.
+[Worker 0]. Starting task 432.
+[Worker 2]. Starting task 442.
+[Worker 3]. Starting task 415.
+[Worker 2]. Starting task 446.
+[Worker 1]. Starting task 433.
+[Worker 0]. Starting task 436.
+[Worker 2]. Starting task 450.
+[Worker 0]. Starting task 440.
+[Worker 3]. Starting task 419.
+[Worker 0]. Starting task 444.
+[Worker 2]. Starting task 454.
+[Worker 1]. Starting task 437.
+[Worker 3]. Starting task 423.
+[Worker 0]. Starting task 448.
+[Worker 1]. Starting task 441.
+[Worker 3]. Starting task 427.
+[Worker 1]. Starting task 445.
+[Worker 0]. Starting task 452.
+[Worker 2]. Starting task 458.
+[Worker 0]. Starting task 456.
+[Worker 1]. Starting task 449.
+[Worker 0]. Starting task 460.
+[Worker 3]. Starting task 431.
+[Worker 1]. Starting task 453.
+[Worker 2]. Starting task 462.
+[Worker 0]. Starting task 464.
+[Worker 3]. Starting task 435.
+[Worker 1]. Starting task 457.
+[Worker 2]. Starting task 466.
+[Worker 0]. Starting task 468.
+[Worker 3]. Starting task 439.
+[Worker 0]. Starting task 472.
+[Worker 2]. Starting task 470.
+[Worker 1]. Starting task 461.
+[Worker 2]. Starting task 474.
+[Worker 0]. Starting task 476.
+[Worker 1]. Starting task 465.
+[Worker 3]. Starting task 443.
+[Worker 2]. Starting task 478.
+[Worker 1]. Starting task 469.
+[Worker 2]. Starting task 482.
+[Worker 0]. Starting task 480.
+[Worker 3]. Starting task 447.
+[Worker 1]. Starting task 473.
+[Worker 2]. Starting task 486.
+[Worker 3]. Starting task 451.
+[Worker 0]. Starting task 484.
+[Worker 0]. Starting task 488.
+[Worker 1]. Starting task 477.
+[Worker 2]. Starting task 490.
+[Worker 3]. Starting task 455.
+[Worker 0]. Starting task 492.
+[Worker 1]. Starting task 481.
+[Worker 3]. Starting task 459.
+[Worker 2]. Starting task 494.
+[Worker 0]. Starting task 496.
+[Worker 1]. Starting task 485.
+[Worker 2]. Starting task 498.
+[Worker 1]. Starting task 489.
+[Worker 3]. Starting task 463.
+[Worker 3]. Starting task 467.
+[Worker 1]. Starting task 493.
+      Worker 0 finished
+[Worker 3]. Starting task 471.
+[Worker 1]. Starting task 497.
+[Worker 3]. Starting task 475.
+[Worker 3]. Starting task 479.
+[Worker 3]. Starting task 483.
+      Worker 1 finished
+      Worker 2 finished
+[Worker 3]. Starting task 487.
+[Worker 3]. Starting task 491.
+[Worker 3]. Starting task 495.
+[Worker 3]. Starting task 499.
+      Worker 3 finished
+   ✓ All 4 workers completed
+   ✓ Complete (1534.9 min)
+   💡 Actual speedup: 4.5x
+
+Step 3/4: Combine...
+Combining factorizations for k=10.
+Combining factorizations for k=15.
+Combining factorizations for k=20.
+Combining factorizations for k=25.
+Combining factorizations for k=30.
+   ✓ Complete
+
+Step 4/4: Consensus...
+   K=10 complete
+   K=15 complete
+   K=20 complete
+   K=25 complete
+   K=30 complete
+
+Loading results for K=15...
+   ✓ Loaded: (278930, 15)
+   Column names: [1, 2, 3]...
+
+Adding GEP scores to adata (using column position)...
+   ✓ Added 15 GEP columns
+
+💾 Saving cNMF (Harmony) checkpoint...
+   ✓ Saved: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline/checkpoint_cnmf_harmony.h5ad
+
+✅ Section 5 complete (1727.6 min)
+======================================================================
+
+💾 Saving complete integrated data with GEP scores...
+   ✓ Saved: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline/checkpoint_complete_with_geps.h5ad (11.17 GB)
+
+   This file contains:
+      - cNMF uncorrected GEPs (GEP_*_nocorr)
+      - cNMF Harmony GEPs (GEP_*_harmony)
+      - All clustering results
+      - All metadata and embeddings
+
+======================================================================
+Section 6: GEP-Cluster Mapping Analysis
+======================================================================
+
+Mapping configuration:
+   Cluster key: leiden_bbknn
+   Analyzing: ['Uncorrected', 'Harmony']
+   K: 15
+
+======================================================================
+Analyzing Uncorrected GEPs
+======================================================================
+   Found 15 GEP columns
+
+   Calculating mean GEP usage per cluster...
+      ✓ Saved: mean_gep_usage_per_cluster.csv
+   Identifying dominant GEPs...
+      ✓ Saved: dominant_geps_per_cluster.csv
+   Running statistical tests...
+      ✓ Found 84 significant associations
+      ✓ Saved: gep_cluster_statistical_tests.csv
+   Generating visualizations...
+      ✓ Heatmap saved
+
+   Top 10 significant associations:
+      1. GEP_2 in Cluster 0: FC=1.93, p=0.00e+00
+      2. GEP_4 in Cluster 20: FC=2.20, p=0.00e+00
+      3. GEP_8 in Cluster 19: FC=89.31, p=0.00e+00
+      4. GEP_11 in Cluster 18: FC=1.61, p=0.00e+00
+      5. GEP_10 in Cluster 18: FC=1.06, p=0.00e+00
+      6. GEP_2 in Cluster 18: FC=2.47, p=0.00e+00
+      7. GEP_7 in Cluster 17: FC=1.88, p=0.00e+00
+      8. GEP_5 in Cluster 20: FC=6.38, p=0.00e+00
+      9. GEP_4 in Cluster 17: FC=16.50, p=0.00e+00
+      10. GEP_8 in Cluster 16: FC=1.25, p=0.00e+00
+
+   ✓ Uncorrected mapping complete
+
+======================================================================
+Analyzing Harmony GEPs
+======================================================================
+   Found 15 GEP columns
+
+   Calculating mean GEP usage per cluster...
+      ✓ Saved: mean_gep_usage_per_cluster.csv
+   Identifying dominant GEPs...
+      ✓ Saved: dominant_geps_per_cluster.csv
+   Running statistical tests...
+      ✓ Found 84 significant associations
+      ✓ Saved: gep_cluster_statistical_tests.csv
+   Generating visualizations...
+      ✓ Heatmap saved
+
+   Top 10 significant associations:
+      1. GEP_2 in Cluster 0: FC=1.53, p=0.00e+00
+      2. GEP_13 in Cluster 18: FC=1.42, p=0.00e+00
+      3. GEP_12 in Cluster 18: FC=1.27, p=0.00e+00
+      4. GEP_10 in Cluster 18: FC=2.55, p=0.00e+00
+      5. GEP_2 in Cluster 18: FC=2.88, p=0.00e+00
+      6. GEP_9 in Cluster 17: FC=20.75, p=0.00e+00
+      7. GEP_5 in Cluster 17: FC=8.46, p=0.00e+00
+      8. GEP_13 in Cluster 19: FC=70.18, p=0.00e+00
+      9. GEP_14 in Cluster 16: FC=1.12, p=0.00e+00
+      10. GEP_4 in Cluster 16: FC=3.23, p=0.00e+00
+
+   ✓ Harmony mapping complete
+
+✅ Section 6 complete (59.7s)
+======================================================================
+
+======================================================================
+Section 7: Generating Final Summary Report
+======================================================================
+
+======================================================================
+Complete Epithelial Cell Analysis Pipeline - Summary Report
+======================================================================
+
+Start time: 2025-12-03 14:54:17
+End time: 2025-12-05 12:26:16
+Total time: 45.53 hours (2732.0 minutes)
+
+[ Configuration ]
+  Input file: /home/h2048/data/py/1128/bbknn_celltype_analysis/Epithelial/adata_Epithelial_bbknn.h5ad
+  Output directory: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline
+  Number of cells: 278,930
+  Number of genes: 53,973
+  Batch key: dataset
+  Number of batches: 22
+
+[ Pipeline Steps Executed ]
+  ✅ BBKNN Integration (9833.1s)
+  ✅ Harmony Correction (7389.9s)
+  ✅ cNMF Uncorrected (509.2 min, 24.8x speedup)
+  ✅ cNMF Harmony (1727.6 min, 4.5x speedup)
+  ✅ GEP-Cluster Mapping (59.7s)
+
+[ Key Parameters ]
+  cNMF K: 15
+  cNMF iterations: 100
+  🚀 cNMF workers: 4
+  Harmony theta: 1.0
+  Harmony lambda: 6.0
+
+[ Output Files ]
+  Main data: checkpoint_complete_with_geps.h5ad
+  Figures: figures/*.png
+  Mapping results: cnmf_cluster_mapping/
+
+======================================================================
+Pipeline completed successfully
+======================================================================
+
+💾 Report saved: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline/pipeline_summary_report.txt
+💾 Metadata saved: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline/pipeline_metadata.json
+
+======================================================================
+🎉 COMPLETE EPITHELIAL CELL ANALYSIS PIPELINE FINISHED 🎉
+======================================================================
+
+⏱️  Total Runtime: 45.53 hours
+   Breakdown:
+      Data loading: 641s
+      BBKNN: 9833s
+      Harmony: 7390s
+      cNMF uncorrected: 509 min (24.8x)
+      cNMF harmony: 1728 min (4.5x)
+      Mapping: 60s
+
+📁 All results saved to: /home/h2048/data/py/1202/bbknn_celltype_analysis/Epithelial/output_complete_pipeline
+
+🚀 Performance Summary:
+   Workers used: 4
+   Average speedup: 14.7x
+   💡 Time saved: ~1368%
+
+✅ Analysis pipeline complete!

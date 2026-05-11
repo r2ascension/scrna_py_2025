@@ -1,0 +1,73 @@
+{
+  "spec_version": "20260505_v1",
+  "exclude_mt": true,
+  "exclude_ribo": true,
+  "exclude_lncRNA": true,
+  "ig_policy": "auto",
+  "annotation_column_candidates": [
+    "gene_biotype",
+    "gene_type",
+    "biotype",
+    "feature_biotype",
+    "transcript_biotype"
+  ],
+  "annotation_gene_column_candidates": [
+    "gene",
+    "gene_name",
+    "gene_symbol",
+    "symbol",
+    "feature",
+    "feature_name"
+  ],
+  "mitochondrial_prefixes": [
+    "MT-"
+  ],
+  "ribosomal_prefixes": [
+    "RPL",
+    "RPS"
+  ],
+  "ig_patterns": [
+    "^IGH",
+    "^IGK",
+    "^IGL"
+  ],
+  "ig_keep_lineage_patterns": [
+    "\\bB\\b",
+    "B[_ -]?CELL",
+    "MEMORY_B",
+    "NAIVE_B",
+    "GC_B",
+    "ATYPICAL[_ -]?MEMORY[_ -]?B",
+    "PLASMA",
+    "PLASMABLAST"
+  ],
+  "lncrna_biotypes": [
+    "lncrna",
+    "lincRNA",
+    "antisense",
+    "sense_intronic",
+    "sense_overlapping",
+    "3prime_overlapping_ncRNA",
+    "bidirectional_promoter_lncRNA",
+    "macro_lncRNA",
+    "processed_transcript",
+    "non_coding"
+  ],
+  "lncrna_symbol_patterns": [
+    "^LINC",
+    "-AS[0-9]*$",
+    "^MIR[0-9].*HG$",
+    "^SNHG[0-9]+$",
+    "^NEAT1$",
+    "^MALAT1$",
+    "^XIST$",
+    "^H19$",
+    "^MEG3$",
+    "^NORAD$",
+    "^CYTOR$",
+    "^KCNQ1OT1$",
+    "^GAS5$",
+    "^MIAT$"
+  ],
+  "max_example_genes": 12
+}

@@ -1,0 +1,69 @@
+nohup: ignoring input
+================================================================================
+EPITHELIAL scANVI TRAINING - OPTIMIZED VERSION
+================================================================================
+
+Configuration:
+  Input: /home/h2048/data/py/1206/bbknn_celltype_analysis/Epithelial/annotation_results/adata_with_manual_annotations.h5ad
+  Output: /home/h2048/data/py/1206/bbknn_celltype_analysis/Epithelial/scanvi_results
+  Model params: n_latent=30, n_layers=2
+  Training: scVI=400 epochs, scANVI=200 epochs
+  Batch size: 2048, HVG: 3000
+
+================================================================================
+ENVIRONMENT CHECK
+================================================================================
+Seed set to 42
+
+Package versions:
+  - scanpy: 1.11.5
+  - scvi-tools: 1.3.3
+  - torch: 2.5.1.post306
+
+✓ GPU available: Tesla V100-SXM2-16GB
+  Memory: 16.9 GB
+
+================================================================================
+DATA LOADING
+================================================================================
+
+Loading: /home/h2048/data/py/1206/bbknn_celltype_analysis/Epithelial/annotation_results/adata_with_manual_annotations.h5ad
+✓ Data loaded
+  Shape: 278,930 cells × 53,973 genes
+
+Validating required columns...
+✓ All required columns present
+
+Annotation status:
+  Total cells: 278,930
+  Labeled: 278,930 (100.0%)
+  Unknown: 0 (0.0%)
+  Skip: 0 (0.0%)
+
+================================================================================
+PREPARING DATA FOR scVI/scANVI - MEMORY OPTIMIZED
+================================================================================
+
+⚠️  CRITICAL: scVI requires raw count data (not log-normalized)
+✓ Using adata.layers['counts'] as raw counts (no copy)
+
+Basic filtering...
+  Before filtering: 53,973 genes
+  After gene filter: 53,973 genes
+
+Removing 'Skip' cells...
+  Removed 0 cells marked as 'Skip'
+  Remaining: 278,930 cells
+
+Selecting 3000 highly variable genes (batch-aware)...
+Traceback (most recent call last):
+  File "/home/h2048/script/py/epithelial_scanvi_training_20251208_v1.py", line 236, in <module>
+    sc.pp.highly_variable_genes(
+  File "/home/h2048/miniconda3/envs/scvi/lib/python3.10/site-packages/legacy_api_wrap/__init__.py", line 82, in fn_compatible
+    return fn(*args_all, **kw)
+  File "/home/h2048/miniconda3/envs/scvi/lib/python3.10/site-packages/scanpy/preprocessing/_highly_variable_genes.py", line 701, in highly_variable_genes
+    return _highly_variable_genes_seurat_v3(
+  File "/home/h2048/miniconda3/envs/scvi/lib/python3.10/site-packages/scanpy/preprocessing/_highly_variable_genes.py", line 103, in _highly_variable_genes_seurat_v3
+    model.fit()
+  File "_loess.pyx", line 922, in _loess.loess.fit
+ValueError: b'There are other near singularities as well. 0.031008\n'

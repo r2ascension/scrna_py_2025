@@ -2,3 +2,17 @@ results_pipeline_A/
 results_pipeline_B/
 results_pipeline_C/
 results_pipeline_D/
+
+# Local secrets and editor/agent state
+.env
+.env.*
+.claude/
+.vscode/
+
+# Python/Jupyter caches
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Nested Git repositories copied from working folders
+**/.git/

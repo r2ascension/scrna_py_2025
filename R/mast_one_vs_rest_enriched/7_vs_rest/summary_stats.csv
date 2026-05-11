@@ -1,0 +1,2 @@
+Focal_group,Comparison,N_markers_up,N_markers_down,N_genes_tested,N_cells_focal,N_cells_rest,Formula,LogFC_scale
+7,7_vs_rest,313,144,12224,194,2701,~ group_safe + cngeneson_s + log10_umi_s,log2

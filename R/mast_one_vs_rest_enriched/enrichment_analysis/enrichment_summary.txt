@@ -1,0 +1,26 @@
+=== One-vs-Rest Enrichment Analysis Summary ===
+
+Analysis date: 2025-12-24
+Groups analyzed: 7
+Organism: org.Hs.eg.db
+Gene ID type: SYMBOL
+
+GO Enrichment:
+  - Groups with GO results: 7
+  - 1: 192 enriched GO terms
+  - 2: 386 enriched GO terms
+  - 3: 205 enriched GO terms
+  - 4: 75 enriched GO terms
+  - 5: 310 enriched GO terms
+  - 6: 20 enriched GO terms
+  - 7: 110 enriched GO terms
+
+GSEA Hallmark:
+  - Groups with results: 0
+
+GSEA KEGG:
+  - Groups with results: 0
+
+Pathway Clustering:
+  - Heatmaps generated for cross-group comparison
+  - See pathway_clustering/ directory

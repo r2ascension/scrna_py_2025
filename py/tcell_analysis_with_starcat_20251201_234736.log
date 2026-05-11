@@ -1,0 +1,144 @@
+nohup: ignoring input
+scanpy: 1.9.8
+Python: 3.9.24 (main, Oct 21 2025, 20:11:42) 
+[GCC 11.2.0]
+NumPy: 1.24.4
+Pandas: 2.0.3
+Configuration loaded successfully
+Input file: /home/h2048/data/py/1128/bbknn_celltype_analysis/T/adata_T_bbknn.h5ad
+Output directory: /home/h2048/data/py/1202/bbknn_celltype_analysis/T/tcell_analysis_starcat
+Batch key: dataset
+Output directory created: /home/h2048/data/py/1202/bbknn_celltype_analysis/T/tcell_analysis_starcat
+Figure directory: /home/h2048/data/py/1202/bbknn_celltype_analysis/T/tcell_analysis_starcat/figures
+Cache directory: starcat_cache
+
+======================================================================
+Step 1: Loading Data
+======================================================================
+
+Loaded data: 45,676 cells × 34,252 genes
+
+Data structure:
+  obs columns: 137
+  var columns: 7
+  obsm keys: ['X_pca', 'X_umap']
+  uns keys: ['ann_finest_level_colors', 'ann_finest_level_subcluster_colors', 'ann_level_1_colors', 'ann_level_1_subcluster_colors', 'ann_level_2_colors', 'ann_level_2_subcluster_colors', 'ann_level_3_colors', 'ann_level_3_subcluster_colors', 'ann_level_4_colors', 'ann_level_4_subcluster_colors', 'ann_level_5_colors', 'ann_level_5_subcluster_colors', 'cell_type_colors', 'hvg', 'log1p', 'neighbors']
+
+No raw data found, will use .X as raw counts
+
+Batch distribution (key: dataset):
+  Banovich_Kropski_2020: 6,273 cells (13.7%)
+  Barbry_Leroy_2020: 246 cells (0.5%)
+  Guanrui_Liao_2025: 3,405 cells (7.5%)
+  Jain_Misharin_2021_10Xv1: 273 cells (0.6%)
+  Jain_Misharin_2021_10Xv2: 379 cells (0.8%)
+  Jennifer_P_Wang_2021: 97 cells (0.2%)
+  Ji_Hoon_Ahn_2021: 139 cells (0.3%)
+  Kerstin_B_Meyer_2021: 4,176 cells (9.1%)
+  Lafyatis_Rojas_2019_10Xv1: 608 cells (1.3%)
+  Lafyatis_Rojas_2019_10Xv2: 2,102 cells (4.6%)
+  Meyer_2019: 10,638 cells (23.3%)
+  Misharin_2021: 407 cells (0.9%)
+  Misharin_Budinger_2018: 28 cells (0.1%)
+  Nawijn_2021: 8,148 cells (17.8%)
+  Ordovas_Montanes_2018: 103 cells (0.2%)
+  Tine_Wils_2024: 501 cells (1.1%)
+  Weiqing_Wang_2022: 6,535 cells (14.3%)
+  Xinyu_Xie_2024: 1,618 cells (3.5%)
+
+======================================================================
+Step 2: Checking Marker Gene Availability
+======================================================================
+
+Pan_T:
+  Available: 4/4 (100.0%)
+
+CD4:
+  Available: 2/2 (100.0%)
+
+CD8:
+  Available: 2/2 (100.0%)
+
+Naive:
+  Available: 4/4 (100.0%)
+
+Effector_Memory:
+  Available: 5/5 (100.0%)
+
+Treg:
+  Available: 4/4 (100.0%)
+
+Activation:
+  Available: 4/4 (100.0%)
+
+Exhaustion:
+  Available: 5/5 (100.0%)
+
+Resident_Memory:
+  Available: 4/4 (100.0%)
+
+Proliferation:
+  Available: 3/3 (100.0%)
+
+Total marker availability: 36/36 (100.0%)
+
+======================================================================
+Step 3: Preprocessing for BBKNN Integration
+======================================================================
+
+Storing raw counts...
+Raw counts stored
+
+Full dataset backup created: (45676, 34252)
+
+Gene filtering (min_cells=3)...
+After filtering: 45,676 cells × 34,252 genes
+
+Normalizing to 10,000 total counts per cell...
+normalizing counts per cell
+    finished (0:00:07)
+Normalization complete
+
+Applying log1p transformation...
+WARNING: adata.X seems to be already log-transformed.
+Log transformation complete
+
+Selecting top 4000 highly variable genes (flavor=seurat_v3)...
+If you pass `n_top_genes`, all cutoffs are ignored.
+extracting highly variable genes
+--> added
+    'highly_variable', boolean vector (adata.var)
+    'highly_variable_rank', float vector (adata.var)
+    'means', float vector (adata.var)
+    'variances', float vector (adata.var)
+    'variances_norm', float vector (adata.var)
+Selected 4000 highly variable genes
+
+Force including marker genes in HVG set...
+Added 21 marker genes to HVG set
+
+Filtered to HVG: 45,676 cells × 4,021 genes
+
+Scaling data (max_value=10)...
+... as `zero_center=True`, sparse input is densified and may lead to large memory consumption
+Scaling complete
+
+Preprocessing completed
+Working dataset: 45,676 cells × 4,021 genes
+
+======================================================================
+Step 4: PCA Dimensionality Reduction
+======================================================================
+
+Running PCA (n_comps=50)...
+computing PCA
+    on highly variable genes
+    with n_comps=50
+    finished (0:00:41)
+PCA complete
+
+Generating variance ratio plot...
+Traceback (most recent call last):
+  File "/home/h2048/script/py/tcell_analysis_with_starcat.py", line 361, in <module>
+    sc.pl.pca_variance_ratio(adata_hvg, log=True, n_pcs=50, ax=ax, show=False)
+TypeError: pca_variance_ratio() got an unexpected keyword argument 'ax'

@@ -1,326 +1,296 @@
-# CLAUDE.md
+# CLAUDE.md - Single-Cell RNA-seq Analysis Repository
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
-## Overview
+## Repository Overview
 
-This is a single-cell RNA sequencing (scRNA-seq) analysis repository focused on T cell and immune cell analysis in nasal/respiratory tissues. The codebase uses **Seurat v5** as the primary framework, with integration of Python-based tools (scanpy/scANVI) via `reticulate`.
+This is a **single-cell RNA sequencing (scRNA-seq) analysis repository** focused on immune cell analysis in nasal/respiratory tissues, particularly **Chronic Rhinosinusitis with Nasal Polyps (CRSwNP)**.
 
-## Key Analysis Frameworks
+The repository implements a **dual-language workflow**:
+- **Python** (`py/`): Deep learning-based integration and annotation using scanpy/scvi-tools
+- **R** (`R/`): Statistical analysis, QC, and interpretation using Seurat v5
 
-### Core Stack
+---
+
+## Quick Navigation
+
+| Folder | Purpose | Key Technologies |
+|--------|---------|------------------|
+| `py/` | Batch correction, cell annotation, visualization | scVI, scANVI, CellTypist, BBKNN, scanpy |
+| `R/` | QC pipeline, statistical analysis, DE, trajectory | Seurat v5, Monocle3, DESeq2, MASC |
+
+---
+
+## Python Pipeline (`py/`)
+
+### Core Three-Stage Architecture
+
+All major analysis scripts follow this pattern:
+
+1. **scVI** - Variational autoencoder for batch effect removal
+   - Uses raw UMI counts (`layers['counts']`)
+   - Generates latent space (`X_scvi`)
+
+2. **CellTypist** - Automated cell type classification
+   - Requires log-normalized counts
+   - Uses Human_Lung_Atlas model (gene symbols)
+
+3. **scANVI** - Semi-supervised label refinement
+   - Initialized from trained scVI model
+   - Low-confidence cells (<0.5) marked as "Unknown"
+
+### Key Data Structure
+
+```python
+# AnnData object conventions
+adata.X                    # Processed (log-normalized)
+adata.layers['counts']     # Raw UMI counts (CRITICAL for scVI)
+adata.raw.X                # Full gene set raw counts
+
+# Common obs columns
+adata.obs['celltype']              # Cell type annotations
+adata.obs['Multinomial_Label']     # scANVI predictions
+adata.obs['majority_voting']       # CellTypist predictions
+```
+
+### File Naming Conventions
+
+- `*_scvi_celltypist_scanvi_pipeline_YYYYMMDD_v*.py` - Full pipelines
+- `*_bbknn_*.py` - BBKNN integration scripts
+- `*_subcluster_*.py` - Cell type-specific subclustering
+- `*_visualization_*.ipynb` - Jupyter notebooks for figures
+
+---
+
+## R Pipeline (`R/`)
+
+### Core Analysis Framework
+
 - **Seurat v5**: Primary single-cell analysis framework
-- **Python integration**: Uses `reticulate` with conda environment `bbknn_env` for scanpy/scANVI workflows
+- **Python integration**: Uses `reticulate` with conda env `bbknn_env`
 - **Monocle3**: Trajectory analysis (T cell differentiation)
-- **DoubletFinder + celda/DecontX**: Quality control
-- **DESeq2**: Pseudobulk differential expression
-- **MASC (Mixed models)**: Cell composition analysis
+- **DoubletFinder + DecontX**: Quality control
+- **DESeq2 + MASC**: Differential expression and composition analysis
 
-### File Format Conversions
-- Primary interchange format: **h5ad** (AnnData) ↔ **RDS** (Seurat)
-- Use `GetSeurat()` function in `GetSeurat.R` for h5ad → Seurat conversion with raw counts validation
-- Use `SeuratDisk::Convert()` or custom functions for Seurat → h5ad
+### Critical Functions
 
-## Critical Analysis Functions
-
-### 1. Data Import/Export
-
-**GetSeurat() - h5ad to Seurat conversion** (`GetSeurat.R`)
+#### 1. Data Import: `GetSeurat()`
 ```r
-# Reads h5ad with automatic raw counts detection
 seurat_obj <- GetSeurat(
   h5ad_path = "path/to/file.h5ad",
-  assay = "RNA",
   prefer_raw = TRUE,           # Try adata.raw.X first
   prefer_layer_counts = TRUE,   # Then adata.layers['counts']
-  validate_counts = TRUE,       # Validate raw counts (not log-transformed)
+  validate_counts = TRUE,       # Validate raw counts
   debug = TRUE
 )
 ```
-- Automatically searches for raw counts in: `adata.raw.X` → `adata.layers['counts']` → `adata.X`
-- Validates counts are truly raw (integer-like, reasonable range)
-- Imports `obsm` as Seurat reductions (UMAP, PCA)
-- Imports `obs` as metadata
 
-### 2. Quality Control Pipeline
-
-**Complete QC + Smart Merge** (`rds_folder_qc_smartmerge_20251213_v1.R`)
-
-Command-line usage:
+#### 2. QC Pipeline: `rds_folder_qc_smartmerge_*.R`
 ```bash
-Rscript rds_folder_qc_smartmerge_20251213_v1.R /path/to/input_rds_dir /path/to/output_dir
+Rscript rds_folder_qc_smartmerge_20251213_v1.R \
+  /data/raw_samples /data/cleaned_output
 ```
 
-Pipeline:
-1. Gene name standardization (SYMBOL → ALIAS mapping via `org.Hs.eg.db`)
-2. QC filters: `nFeature_RNA` (200-6000), `percent.mt` (<20%), `percent.ribo` (<40%)
-3. Regression-based outlier detection
-4. DoubletFinder (default 6% doublet rate)
-5. DecontX (ambient RNA removal, contamination <25%)
-6. Smart merge across samples with batch-level gene availability matrix
+Pipeline steps:
+1. Gene name standardization (SYMBOL → ALIAS via `org.Hs.eg.db`)
+2. QC filters: nFeature_RNA (200-6000), percent.mt (<20%), percent.ribo (<40%)
+3. DoubletFinder (6% doublet rate)
+4. DecontX (ambient RNA removal, contamination <25%)
+5. Smart merge across samples
 
-Key parameters:
-```r
-NFEATURE_MIN <- 200
-NFEATURE_MAX <- 6000
-MT_MAX <- 20
-RB_MAX <- 40
-DOUBLET_RATE <- 0.06
-DECONTX_CONTAM_MAX <- 0.25
-```
-
-### 3. Trajectory Analysis
-
-**T Cell Trajectory with Monocle3** (`tcell_monocle3_trajectory_analysis_v1.1.R`)
-
-Features:
+#### 3. Trajectory Analysis: `tcell_monocle3_trajectory_*.R`
 - CD4 trajectory: `CD4_Naive → CD4_CM → CD4_EM → Treg`
 - CD8 trajectory: `CD8_Naive → CD8_CM → CD8_EM → CD8_TEMRA`
-- T cell purity QC (validates expression of CD3D/E/G)
-- Branch-specific gene analysis
-- Pseudotime validation plots
 
-Key configuration:
+#### 4. Differential Analysis
 ```r
-CD4_CELLTYPES <- c("CD4_Naive", "CD4_CM", "CD4_EM", "Treg")
-CD8_CELLTYPES <- c("CD8_Naive", "CD8_CM", "CD8_EM", "CD8_TEMRA")
-TCELL_MARKERS <- c("CD3D", "CD3E", "CD3G")
-NAIVE_MARKERS <- c("CCR7", "SELL", "LEF1", "TCF7", "IL7R")
-EFFECTOR_MARKERS <- c("GZMK", "GZMB", "PRF1", "GNLY", "NKG7")
-```
-
-### 4. Differential Analysis
-
-**Pseudobulk DESeq2 Analysis** (`pseudobulk.R`)
-```r
+# Pseudobulk DESeq2
 run_tissue_comparison_analysis(
   seurat_obj = T_object,
   cell_anno_col = "Annotation_2",
   tissue_col = "tissue",
   sample_col = "sample",
-  min_cell_per_sample = 3,
-  min_sample_per_tissue = 3,
-  run_gsva = TRUE,
-  run_go = TRUE,
-  output_dir = "./results"
+  min_cell_per_sample = 3
 )
-```
-- Aggregates counts by tissue × sample × cell type
-- Runs DESeq2 for tissue comparisons
-- GSVA pathway analysis (MSigDB)
-- GO enrichment
 
-**MASC Cell Composition Analysis** (`scMASC.R`)
-```r
+# MASC Cell Composition
 scPairwiseMASCAnalysis(
   seurat_obj,
   cell_type_col = "Annotation",
-  sample_col = "sample",       # Random effect
-  contrast_col = "tissue",      # Fixed effect
-  min_cells = 10,
-  min_samples = 2,
-  p_threshold = 0.05,
-  output_dir = "pairwise_MASC_analysis"
+  sample_col = "sample",
+  contrast_col = "tissue"
 )
 ```
-- Mixed-effects models for cell composition shifts
-- Pairwise tissue comparisons
-- Handles batch effects via random effects
 
-### 5. Enrichment Analysis
-
-**Multi-format GO/KEGG enrichment** (`enrichment_functions.R`)
-```r
-# Accepts CSV files or data.frames with DESeq2/Seurat output
-# Auto-maps column names: p_val, logFC, p_val_adj, gene_names
-# Outputs GO/KEGG plots + interactive HTML visualizations
-```
-
-## Environment Setup
-
-### Required Conda Environment
-```r
-library(reticulate)
-use_condaenv("bbknn_env", required = TRUE)
-py_config()
-```
-
-Python packages in `bbknn_env`:
-- scanpy
-- scvi-tools (scANVI)
-- bbknn
-- anndata
-
-### Key R Packages (`Installation.R`)
-
-Bioconductor:
-- `org.Hs.eg.db`, `clusterProfiler`, `KEGGREST`
-- `DropletUtils`, `SingleCellExperiment`
-- `SCENIC`, `infercnv`
-
-GitHub:
-- `mojaveazure/seurat-disk` (SeuratDisk)
-- `cellgeni/sceasy`
-- `PaulingLiu/ROGUE`
-- `Danko-Lab/BayesPrism/BayesPrism`
-- `campbio/celda` (DecontX)
-
-CRAN:
-- `Seurat`, `monocle3`, `DoubletFinder`
-- `DESeq2`, `GSVA`, `msigdbr`
-- `lme4` (MASC models)
-
-## Common Workflows
-
-### Workflow 1: Import Multi-dataset from Python
-```r
-source("GetSeurat.R")
-
-# Read h5ad files
-seurat_obj1 <- GetSeurat("dataset1.h5ad", debug = TRUE)
-seurat_obj2 <- GetSeurat("dataset2.h5ad", debug = TRUE)
-
-# Add metadata
-seurat_obj1$dataset <- "Study1"
-seurat_obj1$tissue <- "nose"
-
-# Merge
-merged <- merge(seurat_obj1, seurat_obj2,
-                add.cell.ids = c("Study1", "Study2"))
-saveRDS(merged, "merged.rds")
-```
-
-### Workflow 2: QC Pipeline for Multiple Samples
-```bash
-# Input: folder with sample1.rds, sample2.rds, ...
-# Output: cleaned samples + merged object
-Rscript rds_folder_qc_smartmerge_20251213_v1.R \
-  /data/raw_samples \
-  /data/cleaned_output
-```
-
-### Workflow 3: T Cell Trajectory Analysis
-```r
-# Input: h5ad with T cell subset + cell type annotations
-# Edit configuration section in tcell_monocle3_trajectory_analysis_v1.1.R
-# Set INPUT_H5AD, OUTPUT_DIR, LABELS_KEY, CD4_CELLTYPES, CD8_CELLTYPES
-Rscript tcell_monocle3_trajectory_analysis_v1.1.R
-```
-
-## Code Architecture Patterns
-
-### Seurat v5 Compatibility
-The codebase handles Seurat v4/v5 differences with fallback patterns:
+### Seurat v5 Compatibility Pattern
 
 ```r
-# Get counts matrix (works across Seurat versions)
+# Get counts matrix (works across versions)
 get_counts_matrix <- function(seurat_obj, assay = "RNA") {
   counts <- tryCatch(
     LayerData(seurat_obj, assay = assay, layer = "counts"),  # v5
     error = function(e1) tryCatch(
-      GetAssayData(seurat_obj, assay = assay, layer = "counts"),  # v5 alt
-      error = function(e2) tryCatch(
-        GetAssayData(seurat_obj, assay = assay, slot = "counts"),  # v4
-        error = function(e3) seurat_obj[[assay]]@counts  # v3
-      )
+      GetAssayData(seurat_obj, assay = assay, slot = "counts"),  # v4
+      error = function(e2) seurat_obj[[assay]]@counts  # v3
     )
   )
   return(counts)
 }
-
-# Create assay (v5 vs v4)
-create_assay_object <- function(counts_matrix) {
-  assay <- tryCatch(
-    CreateAssay5Object(counts = counts_matrix),  # v5
-    error = function(e) CreateAssayObject(counts = counts_matrix)  # v4
-  )
-  return(assay)
-}
 ```
 
-### Gene Name Standardization
-Always map to official HGNC symbols before merging datasets:
+---
 
-```r
-# Uses org.Hs.eg.db
-# Layer 1: Direct SYMBOL match
-# Layer 2: ALIAS match
-# Layer 3: Keep original if no match
-# Handles synonyms: merge duplicate genes by summing counts
-```
+## Data Locations
 
-## Data Locations and File Naming
+### Directory Structure (Latest by Category)
 
-Typical analysis structure (based on existing scripts):
 ```
 /home/h2048/data/
-├── py/                          # Python/scanpy outputs
-│   └── YYYYMMDD/
-│       └── analysis_name/
-│           └── adata_*.h5ad
-├── R/                           # R/Seurat analyses
-│   └── YYYYMMDD/
-│       └── sample_name.rds
-└── script/R/                    # This repository
+├── py/                    # Python scanpy/scVI outputs (by date)
+│   ├── 0214/              # Latest: Stromal/T cell visualization
+│   │   └── stromal_marker_visualization/
+│   ├── 0212/              # T cell annotation viz
+│   │   └── tcell_annotation_viz/
+│   ├── 0209/              # Myeloid validation optimized
+│   │   ├── myeloid_validation_optimized/
+│   │   └── epithelial_viz_L3_v1_0/
+│   ├── 0208/              # Merged scANVI L2 (v2.5.5 HOTFIX)
+│   │   └── merged_scanvi_L2_prod_v2_5_5_HOTFIX/
+│   ├── 0204/              # scArches mapping L2
+│   │   └── scarches_mapping_L2_v2_5_3/
+│   ├── 0129/              # T/NK unified analysis
+│   │   └── tnk_analysis_unified/
+│   └── (earlier dates: 0128, 0127, 0121, 0119, 0118...)
+│
+├── R/                     # R Seurat outputs (by date)
+│   ├── 0210/              # Latest: Epithelial/Stromal interpretation
+│   │   ├── epithelial_interpret_v3_2_1/
+│   │   └── stromal_interpret_v3_2_1/
+│   ├── 0209/              # Myeloid/B cell analysis
+│   ├── 0205/              # Stromal analysis
+│   ├── 0204/              # Integrated analysis
+│   ├── 0131/              # B cell merge viz
+│   ├── 0130/              # T cell analysis
+│   └── (earlier dates: 0129, 0128, 0127, 0126...)
+│
+├── bulk/                  # Bulk RNA-seq data
+├── core_data/             # Core reference datasets
+│   └── cellranger/        # Cell Ranger reference genomes
+├── index_genome/          # Reference genomes and indexes
+│   └── cisTarget_databases/
+└── source/                # Raw data sources
 ```
 
-File naming conventions:
-- h5ad files: `adata_<dataset>_<method>_<annotation>.h5ad`
-- RDS files: `<dataset>_<date>.rds` or `<study_author>_<year>.rds`
-- Output folders: Use ISO date prefix `YYYYMMDD` or versioned suffix `_v1`, `_v2`
+### Key Analysis Outputs by Cell Type
+
+| Cell Type | Latest Python Output | Latest R Output |
+|-----------|---------------------|-----------------|
+| **T cells** | `py/0212/tcell_annotation_viz/` | `R/0210/` (interpretation) |
+| **B cells** | `py/0203/bcell_scarches_v4_1/` | `R/0131/` |
+| **Myeloid** | `py/0209/myeloid_validation_optimized/` | `R/0209/` |
+| **Epithelial** | `py/0209/epithelial_viz_L3_v1_0/` | `R/0210/epithelial_interpret_v3_2_1/` |
+| **Stromal** | `py/0214/stromal_marker_visualization/` | `R/0210/stromal_interpret_v3_2_1/` |
+| **All cells** | `py/0208/merged_scanvi_L2_prod_v2_5_5_HOTFIX/` | - |
+
+### Output File Patterns
+
+**Python outputs (`py/YYYYMMDD/`):**
+- `adata_*_results.h5ad` - Main AnnData with scVI/scANVI latents
+- `*_scanvi_model/` - Saved scANVI models
+- `*_umap_operator.joblib` - UMAP transformers for projection
+- `*_markers.csv` - Differential expression results
+- `figures/*.pdf` - Visualization outputs
+
+**R outputs (`R/YYYYMMDD/`):**
+- `*_seurat.rds` - Seurat objects
+- `*_markers.csv` - FindAllMarkers results
+- `*_degs.csv` - DESeq2 differential expression
+- `figures/*.pdf` - Plots and visualizations
+
+---
+
+## Environment Setup
+
+### Python Environment (`bbknn_env`)
+```python
+# Required packages
+scanpy, scvi-tools, celltypist, bbknn, anndata
+```
+
+### R Environment
+```r
+library(reticulate)
+use_condaenv("bbknn_env", required = TRUE)
+
+# Key packages
+# Bioconductor: org.Hs.eg.db, clusterProfiler, DropletUtils
+# GitHub: mojaveazure/seurat-disk, cellgeni/sceasy, PaulingLiu/ROGUE
+# CRAN: Seurat, monocle3, DoubletFinder, DESeq2, GSVA
+```
+
+---
+
+## Common Workflows
+
+### 1. Python → R Handoff
+```python
+# In Python
+adata.write_h5ad("output.h5ad")
+```
+```r
+# In R
+source("R/GetSeurat.R")
+seurat_obj <- GetSeurat("output.h5ad", validate_counts = TRUE)
+```
+
+### 2. Complete Analysis Pipeline
+1. **Python**: QC + scVI + CellTypist + scANVI → h5ad
+2. **R**: Import with GetSeurat → Subset → DE/Trajectory
+
+### 3. Cell Type Subclustering
+1. **Python**: Subset cell type → BBKNN + scANVI
+2. **R**: Import → Annotation refinement → Interpretation
+
+---
 
 ## Key Metadata Columns
 
-Standard columns in analysis scripts:
-- **Cell identity**: `Annotation`, `Annotation_2`, `Multinomial_Label`, `celltype`
-- **Sample/Batch**: `sample`, `sample_id`, `dataset`, `batch`
-- **Tissue**: `tissue`, `Location`
-- **Disease**: `disease`, `COVID_status`
-- **QC metrics**: `nFeature_RNA`, `nCount_RNA`, `percent.mt`, `percent.ribo`
-- **Doublet filtering**: `DF.classifications`, `decontX_contamination`
+| Column | Description |
+|--------|-------------|
+| `celltype` / `Annotation` / `Annotation_2` | Cell identity |
+| `sample` / `sample_id` | Sample identifier |
+| `tissue` / `Location` | Tissue type |
+| `disease` / `COVID_status` | Disease status |
+| `nFeature_RNA`, `nCount_RNA` | QC metrics |
+| `percent.mt`, `percent.ribo` | QC metrics |
+| `DF.classifications` | Doublet status |
+| `decontX_contamination` | Ambient RNA level |
 
-## Disease Focus
-
-Primary research focus: **Chronic Rhinosinusitis with Nasal Polyps (CRSwNP)**
-
-Common tissue types:
-- Nasal brush/biopsy samples
-- Healthy vs disease comparisons
-- Multi-dataset integration across different studies
-
-Cell type hierarchies emphasize:
-- T cell subsets (CD4/CD8 differentiation states)
-- Myeloid cells (monocytes, macrophages)
-- Epithelial cells
-- Fibroblasts
-- Endothelial cells
+---
 
 ## Best Practices
 
 1. **Always validate raw counts** when importing h5ad files
-   - Use `validate_counts = TRUE` in `GetSeurat()`
-   - Check max/mean values are in expected UMI range
+2. **Use gene standardization** before merging datasets
+3. **QC order**: Basic QC → Doublet removal → Ambient RNA removal
+4. **Batch effects**: Use Harmony/scVI for visualization; include batch as random effect for DE
+5. **Pseudobulk**: Minimum 3 cells per sample per cell type; minimum 3 samples per condition
+6. **File naming**: Use ISO date prefix `YYYYMMDD` and version suffix `_v1`, `_v2`
 
-2. **Gene standardization before merging**
-   - Different datasets may use different gene IDs (Ensembl vs symbols)
-   - Use `map_gene_names()` function before integration
+---
 
-3. **Quality control order**
-   - EmptyDrops (if not already done in Python)
-   - Basic QC (nFeature, MT%, Ribo%)
-   - Doublet removal
-   - Ambient RNA removal (DecontX)
+## Cell Type Focus
 
-4. **Batch effects**
-   - For visualization: Harmony, scVI, BBKNN (Python)
-   - For DE analysis: Include batch as random effect (pseudobulk/MASC)
+Primary cell types analyzed:
+- **T cells**: CD4/CD8 subsets, differentiation states
+- **B cells**: Subclustering and activation states
+- **Myeloid cells**: Monocytes, macrophages
+- **Epithelial cells**: AT1, AT2, ciliated, goblet, club, basal
+- **Stromal cells**: Fibroblasts, endothelial
 
-5. **Pseudobulk requirements**
-   - Minimum 3 cells per sample per cell type
-   - Minimum 3 samples per condition
-   - Use sample-level aggregation (not cell-level)
+---
 
-6. **Trajectory analysis prerequisites**
-   - Subset to relevant cell types only (e.g., T cells)
-   - Ensure raw counts are available
-   - Validate marker gene expression for QC
+## See Also
+
+- `py/CLAUDE.md` - Detailed Python pipeline documentation
+- `R/CLAUDE.md` - Detailed R pipeline documentation
