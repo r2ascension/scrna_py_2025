@@ -1432,9 +1432,6 @@ def plot_gep_usage_heatmap(
         col_ord = _hclust_order(mean_mat.values.T)
         ordered = mean_mat.iloc[row_ord, col_ord]
 
-        csv_out = viz_dir / f'gep_usage_mean_by_celltype_k{k}.csv'
-        ordered.to_csv(csv_out)
-
         fig, ax = plt.subplots(figsize=(max(12, n_cols * 0.6), max(4, n_rows * 0.4)))
         im = ax.imshow(ordered.values, cmap='RdYlBu_r', aspect='auto', interpolation='nearest')
 
@@ -1453,7 +1450,7 @@ def plot_gep_usage_heatmap(
         out = viz_dir / f'gep_usage_heatmap_k{k}.{cfg["figure_format"]}'
         plt.savefig(out, dpi=cfg['dpi'], bbox_inches='tight')
         plt.close()
-        logger.info(f"    [OK] {out.name}; {csv_out.name}")
+        logger.info(f"    [OK] {out.name}")
         return True
 
     except Exception as e:
@@ -1542,6 +1539,99 @@ def plot_umap_gep_usage(
     return True
 
 
+def plot_gep_gene_pattern_heatmap(
+    cnmf_output_dir : Path,
+    name            : str,
+    k               : int,
+    viz_dir         : Path,
+    n_top           : int = 20,
+    viz_config      : Optional[Dict] = None,
+) -> bool:
+    """Heatmap of top gene weights for each cNMF GEP."""
+    cfg = {**DEFAULT_VIZ_CONFIG, **(viz_config or {})}
+    logger.info(f"  GEP top-gene pattern heatmap (K={k})...")
+    try:
+        cnmf_run_dir = cnmf_output_dir / name
+        top_df = extract_top_genes_with_scores_per_gep(cnmf_run_dir, name, k, n_top=n_top)
+        if top_df is None or top_df.empty:
+            return False
+        genes = list(dict.fromkeys(top_df['gene'].astype(str).tolist()))
+        mat = top_df.pivot_table(index='gene', columns='gep', values='score', aggfunc='max').reindex(genes).fillna(0.0)
+        if mat.empty:
+            return False
+        fig_h = max(5.0, min(22.0, 0.18 * mat.shape[0] + 2.5))
+        fig_w = max(7.0, 0.7 * mat.shape[1] + 3.0)
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        im = ax.imshow(mat.values, aspect='auto', cmap='viridis')
+        ax.set_xticks(range(mat.shape[1]))
+        ax.set_xticklabels(mat.columns, rotation=45, ha='right', fontsize=9)
+        ax.set_yticks(range(mat.shape[0]))
+        ax.set_yticklabels(mat.index, fontsize=6)
+        ax.set_xlabel('GEP')
+        ax.set_ylabel('Top genes')
+        ax.set_title(f'cNMF GEP top-gene weights (K={k}, top {n_top}/GEP)', fontsize=12, weight='bold')
+        cb = plt.colorbar(im, ax=ax, fraction=0.025, pad=0.02)
+        cb.set_label('Spectra score', rotation=270, labelpad=18)
+        plt.tight_layout()
+        out = viz_dir / f'gep_gene_pattern_heatmap_k{k}.{cfg["figure_format"]}'
+        plt.savefig(out, dpi=cfg['dpi'], bbox_inches='tight')
+        plt.close()
+        logger.info(f"    [OK] {out.name}")
+        return True
+    except Exception as e:
+        logger.warning(f"  [WARN] GEP top-gene heatmap failed (K={k}): {e}")
+        plt.close('all')
+        return False
+
+
+def plot_gep_top_gene_barplots(
+    cnmf_output_dir : Path,
+    name            : str,
+    k               : int,
+    viz_dir         : Path,
+    n_top           : int = 10,
+    max_geps        : int = 12,
+    viz_config      : Optional[Dict] = None,
+) -> bool:
+    """Small-multiple barplots of top genes per GEP for LLM/human review."""
+    cfg = {**DEFAULT_VIZ_CONFIG, **(viz_config or {})}
+    logger.info(f"  GEP top-gene barplots (K={k})...")
+    try:
+        cnmf_run_dir = cnmf_output_dir / name
+        top_df = extract_top_genes_with_scores_per_gep(cnmf_run_dir, name, k, n_top=n_top)
+        if top_df is None or top_df.empty:
+            return False
+        geps = list(dict.fromkeys(top_df['gep'].astype(str).tolist()))[:max_geps]
+        n_show = len(geps)
+        if n_show == 0:
+            return False
+        ncols = min(4, n_show)
+        nrows = int(np.ceil(n_show / ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(4.5 * ncols, 3.8 * nrows))
+        axes_flat = np.array(axes).flatten() if nrows * ncols > 1 else np.array([axes])
+        for i, gep in enumerate(geps):
+            ax = axes_flat[i]
+            sub = top_df[top_df['gep'].astype(str) == gep].sort_values('score', ascending=True).tail(n_top)
+            ax.barh(sub['gene'].astype(str), sub['score'].astype(float), color='#4C78A8')
+            ax.set_title(gep, fontsize=10, weight='bold')
+            ax.tick_params(axis='y', labelsize=7)
+            ax.tick_params(axis='x', labelsize=7)
+            ax.set_xlabel('Score', fontsize=8)
+        for j in range(n_show, len(axes_flat)):
+            axes_flat[j].set_visible(False)
+        fig.suptitle(f'cNMF top genes per GEP (K={k})', fontsize=13, weight='bold')
+        plt.tight_layout()
+        out = viz_dir / f'gep_top_gene_barplots_k{k}.{cfg["figure_format"]}'
+        plt.savefig(out, dpi=cfg['dpi'], bbox_inches='tight')
+        plt.close()
+        logger.info(f"    [OK] {out.name}")
+        return True
+    except Exception as e:
+        logger.warning(f"  [WARN] GEP top-gene barplots failed (K={k}): {e}")
+        plt.close('all')
+        return False
+
+
 def generate_all_visualizations(
     cnmf_output_dir : Path,
     name            : str,
@@ -1552,10 +1642,12 @@ def generate_all_visualizations(
     viz_config      : Optional[Dict] = None,
 ) -> Dict[int, Dict[str, bool]]:
     """
-    Generate all three standard visualizations for each K:
+        Generate standard visualizations for each K:
       - local_density histogram
       - GEP clustergram
       - GEP usage heatmap by cell type
+            - GEP top-gene pattern heatmap
+            - GEP top-gene barplots
 
     Returns nested dict: {k: {plot_name: True/False}}
     """
@@ -1582,15 +1674,21 @@ def generate_all_visualizations(
         kr['usage_heatmap'] = plot_gep_usage_heatmap(
             cnmf_output_dir, name, k, adata, celltype_col, viz_dir, viz_config)
 
+        kr['gene_pattern_heatmap'] = plot_gep_gene_pattern_heatmap(
+            cnmf_output_dir, name, k, viz_dir, n_top=20, viz_config=viz_config)
+
+        kr['top_gene_barplots'] = plot_gep_top_gene_barplots(
+            cnmf_output_dir, name, k, viz_dir, n_top=10, max_geps=12, viz_config=viz_config)
+
         n_ok = sum(kr.values())
-        logger.info(f"  {n_ok}/3 plots succeeded")
+        logger.info(f"  {n_ok}/{len(kr)} plots succeeded")
 
         results[k] = kr
         plt.close('all')
         gc.collect()
 
     total_ok = sum(sum(v.values()) for v in results.values())
-    total    = len(k_range) * 3
+    total    = sum(len(v) for v in results.values())
     logger.info(f"\n[OK] Visualization summary: {total_ok}/{total} plots")
 
     return results

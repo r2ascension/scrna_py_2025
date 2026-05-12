@@ -35,6 +35,20 @@ class ProgramGeneExclusionHelperTest(unittest.TestCase):
         self.assertTrue(bool(audit.loc['LINC00152', 'should_exclude']))
         self.assertFalse(bool(audit.loc['MS4A1', 'should_exclude']))
 
+    def test_clone_style_lncRNA_symbols_are_excluded_by_heuristic(self):
+        module = load_module()
+        clone_style = ['AC124014.1', 'AL139246.5', 'AP000251.1', 'BX123456.1', 'Z98765.1']
+        packet = module.build_gene_exclusion_packet(
+            gene_names=clone_style + ['MS4A1'],
+            lineage_context='myeloid',
+        )
+        audit = packet['audit_df'].set_index('gene_symbol')
+        for gene in clone_style:
+            self.assertTrue(bool(audit.loc[gene, 'should_exclude']), gene)
+            self.assertEqual(audit.loc[gene, 'exclude_reason'], 'lncrna')
+            self.assertEqual(audit.loc[gene, 'rule_source'], 'heuristic')
+        self.assertFalse(bool(audit.loc['MS4A1', 'should_exclude']))
+
     def test_apply_gene_exclusion_to_adata_keeps_ig_for_b_lineage_and_writes_sidecars(self):
         module = load_module()
         obs = pd.DataFrame({'cell_type': ['Naive_B', 'Naive_B', 'Naive_B']}, index=[f'cell_{i}' for i in range(3)])

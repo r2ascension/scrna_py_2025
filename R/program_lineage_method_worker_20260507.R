@@ -9,7 +9,6 @@ source('/home/h2048/script/R/program_architecture_bundle_20260428_v1.R')
 options(future.globals.maxSize = 16 * 1024^3)
 
 PYCOGAPS_HELPER_DEFAULT <- '/home/h2048/script/py/pycogaps_helper_20260505_v1.py'
-HARMONY2_HELPER_DEFAULT <- '/home/h2048/script/py/harmony2_helper_20260511_v1.py'
 GENE_EXCLUSION_HELPER_R <- '/home/h2048/script/R/program_gene_exclusion_helper_20260505_v1.R'
 DEEPSEEK_HELPER_R <- '/home/h2048/script/R/tissue_comparison_advanced_helper_20260408.R'
 
@@ -150,103 +149,6 @@ run_pycogaps_runner_local <- function(adata_h5ad_path,
   )
 }
 
-run_harmony2_runner_local <- function(adata_h5ad_path,
-                                      output_dir,
-                                      run_name,
-                                      python_cmd,
-                                      batch_col,
-                                      celltype_col,
-                                      helper_py = HARMONY2_HELPER_DEFAULT,
-                                      basis_key = 'X_pca',
-                                      n_pcs = 50L,
-                                      theta = 1.0,
-                                      lamb = 6.0,
-                                      sigma = 0.1,
-                                      tau = 0,
-                                      max_iter_harmony = 20L,
-                                      n_neighbors = 15L,
-                                      resolutions = c(0.4, 0.8, 1.2, 1.6, 2.0),
-                                      default_resolution = 1.2,
-                                      umap_min_dist = 0.5,
-                                      seed = 42L,
-                                      metric_sample_size = 10000L,
-                                      max_plot_cells = 80000L,
-                                      dpi = 300L) {
-  adata_h5ad_path <- pa_scalar_chr(adata_h5ad_path, 'adata_h5ad_path')
-  helper_py <- pa_scalar_chr(helper_py, 'helper_py')
-  output_dir <- pa_prepare_output_dir(output_dir)
-  py_exec <- pa_resolve_python_executable(python_cmd)
-
-  config <- list(
-    helper_py = normalizePath(helper_py, winslash = '/', mustWork = FALSE),
-    adata_h5ad_path = normalizePath(adata_h5ad_path, winslash = '/', mustWork = FALSE),
-    output_dir = output_dir,
-    run_name = pa_scalar_chr(run_name, 'run_name'),
-    batch_col = pa_null_coalesce(batch_col, NULL),
-    celltype_col = pa_null_coalesce(celltype_col, NULL),
-    basis_key = pa_scalar_chr(basis_key, 'basis_key'),
-    n_pcs = as.integer(n_pcs),
-    theta = as.numeric(theta),
-    lamb = as.numeric(lamb),
-    sigma = as.numeric(sigma),
-    tau = as.numeric(tau),
-    max_iter_harmony = as.integer(max_iter_harmony),
-    n_neighbors = as.integer(n_neighbors),
-    resolutions = as.numeric(resolutions),
-    default_resolution = as.numeric(default_resolution),
-    umap_min_dist = as.numeric(umap_min_dist),
-    seed = as.integer(seed),
-    metric_sample_size = as.integer(metric_sample_size),
-    max_plot_cells = as.integer(max_plot_cells),
-    dpi = as.integer(dpi)
-  )
-
-  config_path <- file.path(output_dir, 'harmony2_runner_config.json')
-  launcher_path <- file.path(output_dir, 'run_harmony2_runner_launcher.py')
-
-  launcher_lines <- c(
-    '#!/usr/bin/env python3',
-    'import importlib.util',
-    'import json',
-    'import pathlib',
-    'import sys',
-    '',
-    'cfg_path = pathlib.Path(sys.argv[1])',
-    'cfg = json.loads(cfg_path.read_text(encoding="utf-8"))',
-    'helper_path = pathlib.Path(cfg.pop("helper_py"))',
-    'spec = importlib.util.spec_from_file_location("pa_harmony2_helper", helper_path)',
-    'module = importlib.util.module_from_spec(spec)',
-    'assert spec.loader is not None',
-    'spec.loader.exec_module(module)',
-    'res = module.run_harmony2_full(**cfg)',
-    'out_path = pathlib.Path(cfg["output_dir"]) / "harmony2_runner_result.json"',
-    'out_path.write_text(json.dumps(res, indent=2, ensure_ascii=False, default=str), encoding="utf-8")',
-    'print(json.dumps({"success": bool(res.get("success")), "result_json": str(out_path)}, ensure_ascii=False))'
-  )
-
-  pa_write_json(config, config_path)
-  pa_write_markdown(launcher_lines, launcher_path)
-  Sys.chmod(launcher_path, mode = '0755')
-
-  plan <- list(
-    status = 'ready',
-    python = py_exec,
-    config_path = config_path,
-    launcher_path = launcher_path,
-    output_dir = output_dir
-  )
-
-  cmd_res <- pa_run_system_command(py_exec, args = c(launcher_path, config_path), fail_on_error = FALSE)
-  runner_result <- pa_json_read(file.path(output_dir, 'harmony2_runner_result.json'), default = list(success = FALSE, output = cmd_res$output))
-
-  list(
-    status = if (isTRUE(runner_result$success)) 'ok' else 'error',
-    plan = plan,
-    command_result = cmd_res,
-    runner_result = runner_result
-  )
-}
-
 load_env_file_safely <- function(path) {
   if (!file.exists(path)) return(FALSE)
   lines <- readLines(path, warn = FALSE)
@@ -304,7 +206,6 @@ llm_source_role <- function(base, rel_path, ext) {
   if (grepl('manifest|summary', base_l)) return('run_context')
   if (grepl('LLM|prompt|interpret', base, ignore.case = TRUE)) return('llm_sidecar')
   if (grepl('gep|program|module|edge|node|usage|score|factor|pattern', base_l)) return('program_evidence')
-  if (grepl('harmony2|harmony', base_l) && ext %in% llm_table_exts()) return('program_evidence')
   'other'
 }
 
@@ -335,9 +236,6 @@ find_candidate_data_for_plot <- function(plot_rel, table_rel) {
   if (grepl('pycogaps|pattern', plot_l)) {
     add_matches('pycogaps_(gene_patterns|cell_patterns)\\.tsv$')
     add_matches('pycogaps_(top_genes_by_pattern|summary)\\.json$')
-  }
-  if (grepl('harmony2|umap_harmony2', plot_l)) {
-    add_matches('harmony2_(summary|metrics|cluster_counts|batch_by_cluster|celltype_by_cluster|umap_coordinates)\\.(json|tsv)$')
   }
 
   same_dir <- dirname(plot_rel)
@@ -440,7 +338,6 @@ run_llm_summary_worker <- function(cfg, output_dir) {
     covarnet = 'covarnet_full',
     cnmf = 'cnmf_full',
     pycogaps = 'pycogaps_full',
-    harmony2 = 'harmony2_full',
     source_method
   ))
   output_dir <- pa_prepare_output_dir(output_dir)
@@ -585,7 +482,12 @@ run_compute_method <- function(cfg, output_dir) {
       hdwgcna_runner_args$resume_celltypes <- TRUE
     }
     if (is.null(hdwgcna_runner_args$resume_skip_statuses)) {
-      hdwgcna_runner_args$resume_skip_statuses <- c('ok', 'no_modules')
+      skip_env <- Sys.getenv('HDWGCNA_RESUME_SKIP_STATUSES', unset = 'ok,no_modules,timeout')
+      hdwgcna_runner_args$resume_skip_statuses <- trimws(strsplit(skip_env, ',', fixed = TRUE)[[1]])
+      hdwgcna_runner_args$resume_skip_statuses <- hdwgcna_runner_args$resume_skip_statuses[nzchar(hdwgcna_runner_args$resume_skip_statuses)]
+      if (length(hdwgcna_runner_args$resume_skip_statuses) == 0L) {
+        hdwgcna_runner_args$resume_skip_statuses <- c('ok', 'no_modules', 'timeout')
+      }
     }
     if (is.null(hdwgcna_runner_args$celltype_timeout_sec)) {
       timeout_env <- Sys.getenv('HDWGCNA_CELLTYPE_TIMEOUT_SEC', unset = '21600')
@@ -594,10 +496,18 @@ run_compute_method <- function(cfg, output_dir) {
         hdwgcna_runner_args$celltype_timeout_sec <- 21600L
       }
     }
+    hdwgcna_celltypes <- pa_null_coalesce(cfg$hdwgcna_celltypes, NULL)
+    if (is.null(hdwgcna_celltypes)) {
+      celltypes_env <- Sys.getenv('HDWGCNA_CELLTYPES', unset = '')
+      if (nzchar(celltypes_env)) {
+        hdwgcna_celltypes <- trimws(strsplit(celltypes_env, ',', fixed = TRUE)[[1]])
+        hdwgcna_celltypes <- hdwgcna_celltypes[nzchar(hdwgcna_celltypes)]
+      }
+    }
     res <- pa_run_hdwgcna_runner(
       seurat_obj = seurat_obj,
       output_dir = output_dir,
-      celltypes = NULL,
+      celltypes = hdwgcna_celltypes,
       celltype_col = cfg$celltype_col,
       sample_col = cfg$sample_col,
       condition_col = cfg$condition_col,
@@ -663,33 +573,6 @@ run_compute_method <- function(cfg, output_dir) {
     )
     saveRDS(res, file.path(output_dir, 'pycogaps_runner_result.rds'))
     if (identical(res$status, 'error')) stop('PyCoGAPS runner returned status=error', call. = FALSE)
-    return(res)
-  }
-
-  if (identical(method, 'harmony2')) {
-    res <- run_harmony2_runner_local(
-      adata_h5ad_path = cfg$h5ad_path,
-      output_dir = output_dir,
-      run_name = paste0(lineage, '_harmony2_full_', cfg$run_stamp),
-      python_cmd = pa_null_coalesce(cfg$harmony2_python, '/home/h2048/miniconda3/envs/bbknn_env/bin/python'),
-      batch_col = cfg$batch_col,
-      celltype_col = cfg$celltype_col,
-      helper_py = pa_null_coalesce(cfg$harmony2_helper, HARMONY2_HELPER_DEFAULT),
-      basis_key = pa_null_coalesce(cfg$harmony2_basis_key, 'X_pca'),
-      n_pcs = as.integer(pa_null_coalesce(cfg$harmony2_n_pcs, 50L)),
-      theta = as.numeric(pa_null_coalesce(cfg$harmony2_theta, 1.0)),
-      lamb = as.numeric(pa_null_coalesce(cfg$harmony2_lambda, 6.0)),
-      sigma = as.numeric(pa_null_coalesce(cfg$harmony2_sigma, 0.1)),
-      tau = as.numeric(pa_null_coalesce(cfg$harmony2_tau, 0)),
-      max_iter_harmony = as.integer(pa_null_coalesce(cfg$harmony2_max_iter_harmony, 20L)),
-      n_neighbors = as.integer(pa_null_coalesce(cfg$harmony2_n_neighbors, 15L)),
-      resolutions = as.numeric(pa_null_coalesce(cfg$harmony2_resolutions, c(0.4, 0.8, 1.2, 1.6, 2.0))),
-      default_resolution = as.numeric(pa_null_coalesce(cfg$harmony2_default_resolution, 1.2)),
-      umap_min_dist = as.numeric(pa_null_coalesce(cfg$harmony2_umap_min_dist, 0.5)),
-      seed = as.integer(pa_null_coalesce(cfg$seed, 42L))
-    )
-    saveRDS(res, file.path(output_dir, 'harmony2_runner_result.rds'))
-    if (identical(res$status, 'error')) stop('Harmony2 runner returned status=error', call. = FALSE)
     return(res)
   }
 

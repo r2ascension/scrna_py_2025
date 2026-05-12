@@ -442,6 +442,12 @@ CLUSTER_BACKEND <- toupper(trimws(as.character(CLUSTER_BACKEND)))
 if (!CLUSTER_BACKEND %in% c("CHOIR", "LEIDEN")) {
   stop(sprintf("Unsupported CLUSTER_BACKEND: %s (expected CHOIR or LEIDEN)", CLUSTER_BACKEND))
 }
+if (!exists("CLUSTER_EXISTING_COL")) CLUSTER_EXISTING_COL <- NULL
+CLUSTER_EXISTING_COL <- if (is.null(CLUSTER_EXISTING_COL) || length(CLUSTER_EXISTING_COL) == 0) {
+  ""
+} else {
+  trimws(as.character(CLUSTER_EXISTING_COL[[1]]))
+}
 if (!exists("LEIDEN_RESOLUTION")) LEIDEN_RESOLUTION <- 0.8
 if (!exists("LEIDEN_N_DIMS")) LEIDEN_N_DIMS <- 30L
 if (!exists("LEIDEN_K_PARAM")) LEIDEN_K_PARAM <- 30L
@@ -3965,7 +3971,28 @@ if (RUN_CLUSTERING) {
     obj_clustered <- NULL
 
     if (RUN_CLUSTERING) {
-      if (identical(cluster_backend, "LEIDEN")) {
+      if (nzchar(CLUSTER_EXISTING_COL) && CLUSTER_EXISTING_COL %in% colnames(obj@meta.data)) {
+        cluster_tag <- if (identical(cluster_backend, "LEIDEN")) {
+          gsub("_+", "_", safe_name(format(as.numeric(LEIDEN_RESOLUTION), scientific = FALSE, trim = TRUE)))
+        } else {
+          gsub("_+", "_", safe_name(format(as.numeric(CHOIR_ALPHA), scientific = FALSE, trim = TRUE)))
+        }
+        cluster_col <- sprintf("%s_clusters_%s", toupper(cluster_backend_label), cluster_tag)
+        obj@meta.data[[cluster_col]] <- as.character(obj@meta.data[[CLUSTER_EXISTING_COL]])
+        obj_clustered <- obj
+        cat(sprintf(
+          "[INFO] Reusing existing metadata column '%s' as %s cluster column '%s' (%d clusters).\n",
+          CLUSTER_EXISTING_COL,
+          cluster_backend_label,
+          cluster_col,
+          length(unique(na.omit(as.character(obj@meta.data[[cluster_col]]))))
+        ))
+      } else if (nzchar(CLUSTER_EXISTING_COL)) {
+        cat(sprintf("[WARN] Requested CLUSTER_EXISTING_COL='%s' not found; computing %s clusters instead.\n",
+                    CLUSTER_EXISTING_COL, cluster_backend_label))
+      }
+
+      if (is.null(obj_clustered) && identical(cluster_backend, "LEIDEN")) {
         cat(sprintf("[INFO] Running Leiden (resolution=%.3f, dims=%d, k=%d)...\n",
                     as.numeric(LEIDEN_RESOLUTION), as.integer(LEIDEN_N_DIMS), as.integer(LEIDEN_K_PARAM)))
         cluster_tag <- gsub("_+", "_", safe_name(format(as.numeric(LEIDEN_RESOLUTION), scientific = FALSE, trim = TRUE)))
@@ -3993,7 +4020,7 @@ if (RUN_CLUSTERING) {
           cat(sprintf("[ERROR] Leiden failed: %s\n", e$message))
           NULL
         })
-      } else {
+      } else if (is.null(obj_clustered)) {
         cat(sprintf("[INFO] Running CHOIR (alpha=%.3f, n_cores=%d)...\n", CHOIR_ALPHA, CHOIR_N_CORES))
         cluster_col <- paste0("CHOIR_clusters_", CHOIR_ALPHA)
         choir_args <- list(

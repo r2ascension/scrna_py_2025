@@ -9,19 +9,19 @@ WORKER_R <- '/home/h2048/script/R/program_lineage_method_worker_20260507.R'
 MONITOR_SH <- '/home/h2048/script/bash/monitor_process_tree_20260507.sh'
 
 CNMF_PYTHON <- '/home/h2048/miniconda3/envs/bbknn_env/bin/python'
-HARMONY2_PYTHON <- '/home/h2048/miniconda3/envs/bbknn_env/bin/python'
-HARMONY2_HELPER <- '/home/h2048/script/py/harmony2_helper_20260511_v1.py'
 PYCOGAPS_PYTHON <- '/home/h2048/miniconda3/envs/scarches_stable_pertpy/bin/python'
 PYCOGAPS_HELPER <- '/home/h2048/script/py/pycogaps_helper_20260505_v1.py'
 RUN_STAMP <- '20260507_parallel_methods'
 
-COMPUTE_METHODS <- c('hdwgcna', 'covarnet', 'cnmf', 'pycogaps', 'harmony2')
+COMPUTE_METHODS <- c('hdwgcna', 'covarnet', 'cnmf', 'pycogaps')
 LLM_METHODS <- paste0('llm_', COMPUTE_METHODS)
 POLL_SECONDS <- 60L
 MONITOR_INTERVAL_DEFAULT <- 60L
 MONITOR_INTERVAL_CNMF <- 30L
 SKIP_COMPLETED_METHODS <- Sys.getenv('SKIP_COMPLETED_METHODS', unset = '0') %in% c('1', 'true', 'TRUE', 'yes', 'YES')
 HDWGCNA_RESUME_CELLTYPES <- !(Sys.getenv('HDWGCNA_RESUME_CELLTYPES', unset = '1') %in% c('0', 'false', 'FALSE', 'no', 'NO'))
+HDWGCNA_RESUME_SKIP_STATUSES <- trimws(strsplit(Sys.getenv('HDWGCNA_RESUME_SKIP_STATUSES', unset = 'ok,no_modules,timeout'), ',', fixed = TRUE)[[1]])
+HDWGCNA_RESUME_SKIP_STATUSES <- HDWGCNA_RESUME_SKIP_STATUSES[nzchar(HDWGCNA_RESUME_SKIP_STATUSES)]
 HDWGCNA_CELLTYPE_TIMEOUT_SEC <- suppressWarnings(as.integer(Sys.getenv('HDWGCNA_CELLTYPE_TIMEOUT_SEC', unset = '21600')))
 if (length(HDWGCNA_CELLTYPE_TIMEOUT_SEC) == 0L || is.na(HDWGCNA_CELLTYPE_TIMEOUT_SEC) || HDWGCNA_CELLTYPE_TIMEOUT_SEC < 0L) {
   HDWGCNA_CELLTYPE_TIMEOUT_SEC <- 21600L
@@ -191,7 +191,6 @@ method_output_subdir <- function(method) {
     covarnet = 'covarnet_full',
     cnmf = 'cnmf_full',
     pycogaps = 'pycogaps_full',
-    harmony2 = 'harmony2_full',
     if (grepl('^llm_', method)) file.path('llm_parallel', sub('^llm_', '', method)) else method
   )
 }
@@ -240,13 +239,11 @@ launch_method_worker <- function(cfg, method, lineage_dir) {
     run_root = RUN_ROOT,
     run_stamp = RUN_STAMP,
     cnmf_python = CNMF_PYTHON,
-    harmony2_python = HARMONY2_PYTHON,
-    harmony2_helper = HARMONY2_HELPER,
     pycogaps_python = PYCOGAPS_PYTHON,
     pycogaps_helper = PYCOGAPS_HELPER,
     hdwgcna_runner_args = list(
       resume_celltypes = HDWGCNA_RESUME_CELLTYPES,
-      resume_skip_statuses = c('ok', 'no_modules'),
+      resume_skip_statuses = HDWGCNA_RESUME_SKIP_STATUSES,
       celltype_timeout_sec = HDWGCNA_CELLTYPE_TIMEOUT_SEC
     ),
     llm_model = 'deepseek-reasoner',
@@ -381,7 +378,7 @@ validate_inputs <- function() {
     if (!file.exists(cfg$rds_path)) missing <- c(missing, cfg$rds_path)
     if (!file.exists(cfg$h5ad_path)) missing <- c(missing, cfg$h5ad_path)
   }
-  for (path in c(WORKER_R, MONITOR_SH, PYCOGAPS_HELPER, HARMONY2_HELPER, CNMF_PYTHON, HARMONY2_PYTHON, PYCOGAPS_PYTHON)) {
+  for (path in c(WORKER_R, MONITOR_SH, PYCOGAPS_HELPER, CNMF_PYTHON, PYCOGAPS_PYTHON)) {
     if (!file.exists(path)) missing <- c(missing, path)
   }
   if (length(missing) > 0L) {
@@ -401,8 +398,6 @@ manifest <- list(
   llm_methods = LLM_METHODS,
   monitor = list(default_interval_sec = MONITOR_INTERVAL_DEFAULT, cnmf_interval_sec = MONITOR_INTERVAL_CNMF),
   cnmf_python = CNMF_PYTHON,
-  harmony2_python = HARMONY2_PYTHON,
-  harmony2_helper = HARMONY2_HELPER,
   pycogaps_python = PYCOGAPS_PYTHON,
   lineages = lineage_configs
 )
