@@ -69,7 +69,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 import seaborn as sns
-from pandas.api.types import CategoricalDtype
+from pandas.api.types import CategoricalDtype, is_bool_dtype
 from scipy.sparse import issparse, csr_matrix
 
 from scHPL import predict as schpl_predict
@@ -452,6 +452,9 @@ def make_scanpy_plot_safe_series(series: pd.Series) -> pd.Series:
     if isinstance(series.dtype, CategoricalDtype):
         s = series.astype("string")
         return s.where(s.notna(), np.nan).astype(object)
+    if is_bool_dtype(series.dtype):
+        s = series.astype("string")
+        return s.where(s.notna(), np.nan).astype(object)
     dtype_str = str(series.dtype)
     if dtype_str.startswith("string"):
         return series.where(series.notna(), np.nan).astype(object)
@@ -830,6 +833,8 @@ def run_pipeline(cfg: LineageMergeSchPLConfig) -> None:
     viz_qry_pred = "viz__qry_label_pred_only"
     viz_qry_conf = "viz__qry_conf_only"
     viz_schpl_pred = "viz__schpl_pred_qry_only"
+    viz_schpl_rejected = "viz__schpl_rejected"
+    viz_schpl_novel = "viz__schpl_novel_candidate"
 
     adata_merged.obs[viz_qry_final] = _make_label_col(query_final_key, qry_mask, global_cats)
     adata_merged.obs[viz_qry_pred] = _make_label_col(query_pred_key, qry_mask, global_cats)
@@ -840,12 +845,32 @@ def run_pipeline(cfg: LineageMergeSchPLConfig) -> None:
     ).values
     adata_merged.obs[viz_qry_conf] = conf_arr
     adata_merged.obs[viz_schpl_pred] = _make_label_col(col_schpl_pred, qry_mask, global_cats_ext)
+    adata_merged.obs[viz_schpl_rejected] = make_scanpy_plot_safe_series(
+        adata_merged.obs[col_schpl_rejected]
+    )
+    adata_merged.obs[viz_schpl_novel] = make_scanpy_plot_safe_series(
+        adata_merged.obs["schpl_novel_candidate"]
+    )
 
     print("=" * 80)
     print("SAVE MERGED DATA + CONFIG")
     print("=" * 80)
     sanitize_object_columns(adata_merged.obs, "obs")
     sanitize_object_columns(adata_merged.var, "var")
+    if (
+        hasattr(ad, "settings")
+        and hasattr(ad.settings, "allow_write_nullable_strings")
+        and (
+            any(str(dtype).startswith("string") for dtype in adata_merged.obs.dtypes)
+            or any(str(dtype).startswith("string") for dtype in adata_merged.var.dtypes)
+        )
+        and not ad.settings.allow_write_nullable_strings
+    ):
+        print(
+            "[INFO] Detected pandas StringDtype columns in merged AnnData; "
+            "enabling anndata.settings.allow_write_nullable_strings=True before write"
+        )
+        ad.settings.allow_write_nullable_strings = True
     merged_output = output_dir / f"{cfg.lineage_slug}_reference_plus_query_schpl_{cfg.version}.h5ad"
     try:
         adata_merged.write_h5ad(merged_output, compression="gzip")
@@ -908,6 +933,8 @@ def run_pipeline(cfg: LineageMergeSchPLConfig) -> None:
         viz_qry_pred,
         viz_schpl_pred,
         col_schpl_rej_type,
+        viz_schpl_rejected,
+        viz_schpl_novel,
     ]:
         if plot_col in adata_merged.obs.columns:
             adata_merged.obs[plot_col] = make_scanpy_plot_safe_series(adata_merged.obs[plot_col])
@@ -1011,7 +1038,7 @@ def run_pipeline(cfg: LineageMergeSchPLConfig) -> None:
     sc.pl.umap(adata_merged, color=viz_schpl_pred, ax=axes[0, 1], show=False,
                title="scHPL Prediction", legend_loc="right margin",
                palette=ct_palette_ext, frameon=False, s=20, na_color="lightgray")
-    sc.pl.umap(adata_merged, color=col_schpl_rejected, ax=axes[0, 2], show=False,
+    sc.pl.umap(adata_merged, color=viz_schpl_rejected, ax=axes[0, 2], show=False,
                title="scHPL Rejected Cells", frameon=False, s=20)
     sc.pl.umap(adata_merged, color=col_schpl_rej_type, ax=axes[1, 0], show=False,
                title="Rejection Type", legend_loc="right margin",
@@ -1019,7 +1046,7 @@ def run_pipeline(cfg: LineageMergeSchPLConfig) -> None:
     sc.pl.umap(adata_merged, color=col_schpl_prob, ax=axes[1, 1], show=False,
                title="scHPL Posterior Probability", cmap=cfg.confidence_cmap,
                vmin=0, vmax=1, frameon=False, s=20)
-    sc.pl.umap(adata_merged, color="schpl_novel_candidate", ax=axes[1, 2], show=False,
+    sc.pl.umap(adata_merged, color=viz_schpl_novel, ax=axes[1, 2], show=False,
                title="Novel Candidate Cells", frameon=False, s=20)
     plt.suptitle(f"scHPL Overview — {cfg.lineage_name}", fontsize=13, fontweight="bold")
     plt.tight_layout()

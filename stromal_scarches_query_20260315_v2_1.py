@@ -210,6 +210,45 @@ G2M_GENES = [
 ]
 
 
+def _max_of_matrix(x):
+    """Return scalar max for dense/sparse matrices."""
+    return float(np.asarray(x.max()).ravel()[0])
+
+
+def _ensure_category_value(series, value):
+    """Ensure a categorical Series contains a specific category value."""
+    if not pd.api.types.is_categorical_dtype(series):
+        series = series.astype('category')
+    if value not in series.cat.categories:
+        series = series.cat.add_categories([value])
+    return series
+
+
+def _sanitize_object_cols(df, df_name):
+    """Convert mixed object columns to h5ad-safe dtypes before write_h5ad."""
+    bool_fixed, str_fixed = [], []
+    for col in df.columns:
+        s = df[col]
+        if s.dtype != object:
+            continue
+        non_na = s.dropna()
+        if len(non_na) == 0:
+            df[col] = s.fillna("").astype(str)
+            str_fixed.append(col)
+            continue
+        if non_na.map(lambda x: isinstance(x, (bool, np.bool_))).all():
+            df[col] = s.fillna(False).astype(np.int8)
+            bool_fixed.append(col)
+            continue
+        if non_na.map(lambda x: not isinstance(x, str)).any():
+            df[col] = s.map(lambda x: "" if pd.isna(x) else str(x))
+            str_fixed.append(col)
+    if bool_fixed:
+        print(f"  [INFO] {df_name} bool->int8: {bool_fixed}")
+    if str_fixed:
+        print(f"  [INFO] {df_name} mixed->str: {str_fixed}")
+
+
 # %%
 # ============================================================
 # STEP 0: Validate reference models + load HVG gene list
@@ -280,15 +319,26 @@ for cfg in QUERY_CONFIGS:
             ad.layers['counts'] = sparse.csr_matrix(
                 ad.raw[:, ad.var_names].X
             ).astype(np.float32)
-        elif float(np.asarray(ad.X.max()).ravel()[0]) > 25:
+        elif _max_of_matrix(ad.X) > 25:
             print(f"    [INFO] No counts layer; treating .X as raw counts")
             ad.layers['counts'] = sparse.csr_matrix(ad.X).astype(np.float32)
         else:
             raise ValueError(
                 f"[ERROR] {name}: no counts layer and .X appears log-normalized "
-                f"(max={float(np.asarray(ad.X.max()).ravel()[0]):.3f}). "
+                f"(max={_max_of_matrix(ad.X):.3f}). "
                 "Raw counts required for scArches mapping."
             )
+
+    ad.layers['counts'] = sparse.csr_matrix(ad.layers['counts']).astype(np.float32)
+    if np.isnan(ad.layers['counts'].data).any() or np.isinf(ad.layers['counts'].data).any():
+        print("    [WARN] counts layer contains NaN/Inf; coercing to 0")
+        bad = np.isnan(ad.layers['counts'].data) | np.isinf(ad.layers['counts'].data)
+        ad.layers['counts'].data[bad] = 0.0
+        ad.layers['counts'].eliminate_zeros()
+
+    # CRITICAL: standardize .X to raw counts BEFORE concat so that both merged .X
+    # and any fallback reconstruction remain authoritative raw counts.
+    ad.X = ad.layers['counts']
 
     # Ensure BATCH_KEY exists
     if BATCH_KEY not in ad.obs.columns:
@@ -329,28 +379,24 @@ if sparse.issparse(adata_full.X):
     _d[np.isnan(_d)] = 0.0
     adata_full.X.eliminate_zeros()
 
-# Rebuild counts layer from merged .X (outer-join layer propagation is unreliable)
-# At this point .X holds concatenated counts from the original subset counts layers
-# (each subset had .X = log1p or counts depending on source; we set counts into layers
-#  before concat, but .X was whatever the original file had). Safest: use the
-# layer if it propagated correctly, otherwise rebuild from .X.
+# Rebuild/normalize counts layer after concat.
+# Since each subset explicitly set .X = layers['counts'] before concat, merged .X is
+# authoritative raw counts. This makes the fallback safe even if outer-join layer
+# propagation drops/reshapes the 'counts' layer.
 if ('counts' in adata_full.layers and
         adata_full.layers['counts'].shape == adata_full.shape):
-    _layer_ok = True
-    _lyr_max  = float(np.asarray(adata_full.layers['counts'].max()).ravel()[0])
-    if _lyr_max < 1.0:
-        print("  [WARN] counts layer looks normalized after concat; rebuilding from .X")
-        _layer_ok = False
-else:
-    _layer_ok = False
-
-if not _layer_ok:
-    print("  [INFO] Rebuilding counts layer from merged .X")
-    adata_full.layers['counts'] = sparse.csr_matrix(adata_full.X).astype(np.float32)
-else:
     adata_full.layers['counts'] = sparse.csr_matrix(
         adata_full.layers['counts']
     ).astype(np.float32)
+else:
+    print("  [INFO] Rebuilding counts layer from merged .X (already standardized to counts)")
+    adata_full.layers['counts'] = sparse.csr_matrix(adata_full.X).astype(np.float32)
+
+if np.isnan(adata_full.layers['counts'].data).any() or np.isinf(adata_full.layers['counts'].data).any():
+    print("  [WARN] merged counts layer contains NaN/Inf; coercing to 0")
+    _bad = np.isnan(adata_full.layers['counts'].data) | np.isinf(adata_full.layers['counts'].data)
+    adata_full.layers['counts'].data[_bad] = 0.0
+    adata_full.layers['counts'].eliminate_zeros()
 
 # Category dtype
 for col in [BATCH_KEY, TISSUE_KEY, 'query_subset']:
@@ -592,7 +638,10 @@ print("STEP 5b: ADD REFERENCE SCANVI LABELS_KEY COLUMN")
 print("="*70)
 
 adata_hvg.obs[REF_SCANVI_LABELS_KEY] = UNLABELED
-adata_hvg.obs[REF_SCANVI_LABELS_KEY] = adata_hvg.obs[REF_SCANVI_LABELS_KEY].astype('category')
+adata_hvg.obs[REF_SCANVI_LABELS_KEY] = _ensure_category_value(
+    adata_hvg.obs[REF_SCANVI_LABELS_KEY].astype('category'),
+    UNLABELED,
+)
 print(f"  Column '{REF_SCANVI_LABELS_KEY}': {adata_hvg.n_obs:,} cells = '{UNLABELED}'")
 print(f"  (This matches the labels_key used in reference v1.3 SCANVI training)")
 
@@ -659,7 +708,14 @@ print("="*70)
 # Label class info (cell_type_mapping) will be read from the query model
 # after load_query_data() in Step 7b.
 scvi.model.SCANVI.prepare_query_anndata(adata_hvg, str(SCANVI_REF_DIR))
+assert REF_SCANVI_LABELS_KEY in adata_hvg.obs.columns, \
+    f"[ERROR] '{REF_SCANVI_LABELS_KEY}' lost during SCANVI prepare_query_anndata"
+adata_hvg.obs[REF_SCANVI_LABELS_KEY] = _ensure_category_value(
+    adata_hvg.obs[REF_SCANVI_LABELS_KEY],
+    UNLABELED,
+)
 print(f"  [OK] SCANVI prepare_query_anndata done")
+print(f"  [OK] '{UNLABELED}' retained in '{REF_SCANVI_LABELS_KEY}' categories")
 
 
 # %%
@@ -713,15 +769,27 @@ qry_scanvi.save(SCANVI_QRY_DIR, overwrite=True)
 
 # Extract latent representation + predictions
 adata_hvg.obsm['X_scanvi']           = qry_scanvi.get_latent_representation()
-adata_hvg.obs['cell_type_scarches_pred'] = qry_scanvi.predict()
+pred_labels = qry_scanvi.predict()
+if hasattr(pred_labels, 'reindex'):
+    pred_labels = pred_labels.reindex(adata_hvg.obs_names)
+adata_hvg.obs['cell_type_scarches_pred'] = pred_labels
 
 # Soft predictions -> confidence and margin
 soft_df = qry_scanvi.predict(soft=True)
+if hasattr(soft_df, 'reindex'):
+    soft_df = soft_df.reindex(adata_hvg.obs_names)
 soft_arr = soft_df.to_numpy() if hasattr(soft_df, 'to_numpy') else np.asarray(soft_df)
 
+if soft_arr.ndim != 2 or soft_arr.shape[1] == 0:
+    raise ValueError("[ERROR] SCANVI soft predictions returned an empty label space.")
+
 confidence   = soft_arr.max(axis=1).astype(np.float32)
-sorted_soft  = np.sort(soft_arr, axis=1)[:, ::-1]
-margin       = (sorted_soft[:, 0] - sorted_soft[:, 1]).astype(np.float32)
+if soft_arr.shape[1] >= 2:
+    sorted_soft  = np.sort(soft_arr, axis=1)[:, ::-1]
+    margin       = (sorted_soft[:, 0] - sorted_soft[:, 1]).astype(np.float32)
+else:
+    print("  [WARN] Only one label class returned; setting margin = confidence")
+    margin = confidence.copy()
 
 adata_hvg.obs['scarches_confidence']     = confidence
 adata_hvg.obs['scarches_margin']         = margin
@@ -744,6 +812,15 @@ adata_hvg.obs['predicted_L2'] = (
 # Category dtype
 for _col in ['cell_type_scarches_pred', 'cell_type_scarches_final', 'predicted_L2']:
     adata_hvg.obs[_col] = adata_hvg.obs[_col].astype('category')
+
+adata_hvg.obs['cell_type_scarches_final'] = _ensure_category_value(
+    adata_hvg.obs['cell_type_scarches_final'],
+    UNLABELED,
+)
+adata_hvg.obs['predicted_L2'] = _ensure_category_value(
+    adata_hvg.obs['predicted_L2'],
+    'Unknown',
+)
 
 if hasattr(soft_df, 'columns'):
     adata_hvg.uns['scarches_label_classes'] = soft_df.columns.tolist()
@@ -967,6 +1044,16 @@ adata_hvg.obs[[
 print("  [OK] label_summary.csv")
 
 OUT_H5AD = OUTPUT_DIR / "adata_stromal_query_mapped_v2_1.h5ad"
+for _col in adata_hvg.obs.select_dtypes(include=['category']).columns:
+    _cats = adata_hvg.obs[_col].cat.categories
+    if hasattr(_cats.dtype, 'name') and _cats.dtype.name in ('string', 'StringDtype'):
+        adata_hvg.obs[_col] = adata_hvg.obs[_col].cat.rename_categories(_cats.astype(object))
+
+_sanitize_object_cols(adata_hvg.obs, 'obs')
+_sanitize_object_cols(adata_hvg.var, 'var')
+if adata_hvg.raw is not None:
+    _sanitize_object_cols(adata_hvg.raw.var, 'raw.var')
+
 adata_hvg.write_h5ad(OUT_H5AD, compression='gzip', compression_opts=9)
 print(f"  [OK] {OUT_H5AD}")
 

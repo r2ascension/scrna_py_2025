@@ -11,7 +11,7 @@ Usage:
 
 # ==================== 配置区域 ====================
 # 直接修改这里的路径，然后运行脚本
-H5AD_PATH = '/home/h2048/data/py/0209/myeloid_validation_optimized/adata_myeloid_refined_optimized.h5ad'
+H5AD_PATH = '/home/h2048/data/py/0203/bcell_scarches_v4_1/results/scarches_package/bcell_reference_20260203.h5ad'
 
 # 采样参数
 N_SAMPLE_CELLS = 10000  # 采样细胞数
