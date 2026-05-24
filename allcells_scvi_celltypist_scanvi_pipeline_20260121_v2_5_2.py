@@ -624,37 +624,34 @@ def calculate_label_agreement_purity(adata, label_key, neighbors_key='neighbors'
     if not isinstance(connectivities, csr_matrix):
         connectivities = csr_matrix(connectivities)
     
-    # Calculate purity for each cell
-    purity = np.zeros(n_cells, dtype=np.float32)
-    
-    for i in range(n_cells):
-        cell_label = labels[i]
-        
-        # Get neighbors (exclude self)
-        start = connectivities.indptr[i]
-        end = connectivities.indptr[i + 1]
-        neighbor_indices = connectivities.indices[start:end]
-        neighbor_weights = connectivities.data[start:end]
-        
-        # Remove self-loops
-        non_self_mask = neighbor_indices != i
-        neighbor_indices = neighbor_indices[non_self_mask]
-        neighbor_weights = neighbor_weights[non_self_mask]
-        
-        if len(neighbor_indices) == 0:
-            purity[i] = 1.0  # Isolated cell: assign high purity
-            continue
-        
-        # Get neighbor labels
-        neighbor_labels = labels[neighbor_indices]
-        
-        # Calculate weighted purity
-        same_label_mask = neighbor_labels == cell_label
-        same_label_weight = neighbor_weights[same_label_mask].sum()
-        total_weight = neighbor_weights.sum()
-        
-        purity[i] = same_label_weight / total_weight if total_weight > 0 else 1.0
-    
+    # Calculate purity for each cell (vectorized over all edges)
+    indptr = connectivities.indptr
+    col_indices = connectivities.indices
+    edge_weights = connectivities.data
+
+    # Build row index for every non-zero entry in the CSR matrix
+    row_indices = np.repeat(np.arange(n_cells), np.diff(indptr))
+
+    # Remove self-loops
+    non_self = row_indices != col_indices
+    row_idx = row_indices[non_self]
+    col_idx = col_indices[non_self]
+    weights = edge_weights[non_self]
+
+    # Accumulate total and same-label weights per cell
+    total_weights = np.zeros(n_cells, dtype=np.float64)
+    same_weights = np.zeros(n_cells, dtype=np.float64)
+    same_label = labels[row_idx] == labels[col_idx]
+    np.add.at(total_weights, row_idx, weights)
+    np.add.at(same_weights, row_idx[same_label], weights[same_label])
+
+    # Isolated cells (no neighbors) get purity 1.0
+    purity = np.ones(n_cells, dtype=np.float32)
+    has_neighbors = total_weights > 0
+    purity[has_neighbors] = (
+        same_weights[has_neighbors] / total_weights[has_neighbors]
+    ).astype(np.float32)
+
     return purity
 
 
@@ -899,7 +896,7 @@ if n_stress >= 10:
     sc.pp.normalize_total(adata_temp, target_sum=1e4)
     sc.pp.log1p(adata_temp)
     
-    stress_indices = [i for i, g in enumerate(adata.var_names) if g in stress_genes_in_data]
+    stress_indices = np.where(np.isin(adata.var_names, stress_genes_in_data))[0]
     stress_expr = adata_temp.X[:, stress_indices]
     if issparse(stress_expr):
         stress_score_raw = np.array(stress_expr.mean(axis=1)).flatten()
