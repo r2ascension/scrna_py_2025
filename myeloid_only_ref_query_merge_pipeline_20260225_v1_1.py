@@ -61,8 +61,16 @@ import matplotlib.pyplot as plt
 
 import scanpy as sc
 import scvi
-import celltypist
-from celltypist import models
+try:
+    import celltypist
+    from celltypist import models
+    CELLTYPIST_AVAILABLE = True
+    CELLTYPIST_IMPORT_ERROR = None
+except Exception as e:
+    celltypist = None
+    models = None
+    CELLTYPIST_AVAILABLE = False
+    CELLTYPIST_IMPORT_ERROR = e
 from umap import UMAP
 
 import torch
@@ -87,6 +95,8 @@ if gpu_available:
 
 scvi.settings.dl_num_workers = 0
 print(f"scVI dl_num_workers: {scvi.settings.dl_num_workers}")
+if not CELLTYPIST_AVAILABLE:
+    print(f"CellTypist available: False (will skip Step 11) [{CELLTYPIST_IMPORT_ERROR}]")
 
 
 def _env_path(name: str, default: str) -> str:
@@ -101,6 +111,34 @@ def _env_value(name: str, default: str) -> str:
     if value is None or not value.strip():
         return default
     return value.strip()
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return int(value.strip())
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean for {name}: {value}")
+
+
+def _latest_saved_model_dir(root: Path) -> Optional[Path]:
+    if not root.exists() or not root.is_dir():
+        return None
+    candidates = [path for path in root.iterdir() if path.is_dir()]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
 
 # ==============================================================================
 # 1. CONFIGURATION
@@ -144,16 +182,20 @@ SCVI_N_LATENT = 100
 SCVI_N_LAYERS = 2
 SCVI_N_HIDDEN = 128
 SCVI_DROPOUT = 0.1
-MAX_EPOCHS_SCVI = 400
+MAX_EPOCHS_SCVI = _env_int("MYELOID_MAX_EPOCHS_SCVI", 400)
 
 # scANVI Parameters
-MAX_EPOCHS_SCANVI = 200
+MAX_EPOCHS_SCANVI = _env_int("MYELOID_MAX_EPOCHS_SCANVI", 200)
 UNLABELED_CATEGORY = "Unknown"
 
 # Training Parameters
-BATCH_SIZE = 256
+BATCH_SIZE = _env_int("MYELOID_BATCH_SIZE", 256)
 LEARNING_RATE = 1e-3
 WEIGHT_DECAY = 0.0
+
+FORCE_RETRAIN = _env_bool("MYELOID_FORCE_RETRAIN", False)
+FORCE_REEXPORT = _env_bool("MYELOID_FORCE_REEXPORT", False)
+ENABLE_TRAIN_CHECKPOINTS = _env_bool("MYELOID_ENABLE_TRAIN_CHECKPOINTS", True)
 
 # CellTypist Parameters
 CELLTYPIST_MODEL = "/home/h2048/data/source/reference/celltypist_models/Immune_All_Low.pkl"
@@ -447,6 +489,9 @@ def run_celltypist_on_full_genes(adata_merged, hvg_mask, model_name=CELLTYPIST_M
     Run CellTypist on full gene matrix (not HVG subset).
     Uses local-path check before calling download_models (BUG-2 fix).
     """
+    if not CELLTYPIST_AVAILABLE:
+        raise RuntimeError(f"celltypist not available: {CELLTYPIST_IMPORT_ERROR}")
+
     print("\n[CellTypist] Starting annotation on FULL gene matrix...")
 
     if os.path.isfile(model_name):
@@ -586,6 +631,15 @@ def main():
 
     output_dir = Path(OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    scvi_model_dir = output_dir / f"{OUTPUT_PREFIX}_scvi_model"
+    scanvi_model_dir = output_dir / f"{OUTPUT_PREFIX}_scanvi_model"
+    scvi_checkpoint_dir = output_dir / f"{OUTPUT_PREFIX}_scvi_checkpoints"
+    scanvi_checkpoint_dir = output_dir / f"{OUTPUT_PREFIX}_scanvi_checkpoints"
+    pre_umap_h5ad = output_dir / f"{OUTPUT_PREFIX}_post_scanvi_pre_umap.h5ad"
+    output_h5ad = output_dir / f"{OUTPUT_PREFIX}_results.h5ad"
+    train_h5ad = output_dir / f"{OUTPUT_PREFIX}_train_HVG.h5ad"
+    config_path = output_dir / f"{OUTPUT_PREFIX}_config.json"
 
     # --- Step 1: Load Reference and Query ---
     print("\n[Step 1] Loading Reference and Query...")
@@ -783,13 +837,18 @@ def main():
 
     scvi.model.SCVI.setup_anndata(adata_train, **setup_kwargs)
 
-    scvi_model = scvi.model.SCVI(
-        adata_train,
-        n_latent=SCVI_N_LATENT,
-        n_layers=SCVI_N_LAYERS,
-        n_hidden=SCVI_N_HIDDEN,
-        dropout_rate=SCVI_DROPOUT
-    )
+    scvi_checkpoint_callbacks = []
+    if ENABLE_TRAIN_CHECKPOINTS:
+        scvi_checkpoint_callbacks.append(
+            scvi.train.SaveCheckpoint(
+                dirpath=str(scvi_checkpoint_dir),
+                filename="epoch{epoch:03d}-step{step}",
+                monitor="elbo_validation",
+                mode="min",
+                save_top_k=1,
+                load_best_on_end=True,
+            )
+        )
 
     train_kwargs = {
         "max_epochs": MAX_EPOCHS_SCVI,
@@ -798,22 +857,49 @@ def main():
         "early_stopping_patience": 30,
         "plan_kwargs": {"lr": LEARNING_RATE, "weight_decay": WEIGHT_DECAY},
     }
+    if scvi_checkpoint_callbacks:
+        train_kwargs["callbacks"] = scvi_checkpoint_callbacks
     if gpu_available:
         train_kwargs["accelerator"] = "gpu"
         train_kwargs["devices"] = 1
 
-    scvi_model.train(**train_kwargs)
-    print("  -> scVI complete")
+    if scvi_model_dir.exists() and not FORCE_RETRAIN:
+        print(f"  -> Loading existing scVI model: {scvi_model_dir}")
+        scvi_model = scvi.model.SCVI.load(scvi_model_dir, adata=adata_train)
+        print("  -> scVI model loaded (training skipped)")
+    else:
+        scvi_resume_dir = None if FORCE_RETRAIN else _latest_saved_model_dir(scvi_checkpoint_dir)
+        if scvi_resume_dir is not None:
+            print(f"  -> Resuming scVI from checkpoint snapshot: {scvi_resume_dir}")
+            scvi_model = scvi.model.SCVI.load(scvi_resume_dir, adata=adata_train)
+        else:
+            scvi_model = scvi.model.SCVI(
+                adata_train,
+                n_latent=SCVI_N_LATENT,
+                n_layers=SCVI_N_LAYERS,
+                n_hidden=SCVI_N_HIDDEN,
+                dropout_rate=SCVI_DROPOUT
+            )
+        scvi_model.train(**train_kwargs)
+        print("  -> scVI complete")
+        scvi_model.save(scvi_model_dir, overwrite=True)
+        print(f"  -> Saved scVI snapshot: {scvi_model_dir}")
 
     # --- Step 13: scANVI Training ---
     print("\n[Step 13] Training scANVI...")
 
-    scanvi_model = scvi.model.SCANVI.from_scvi_model(
-        scvi_model,
-        adata=adata_train,
-        labels_key="scanvi_labels",
-        unlabeled_category=UNLABELED_CATEGORY
-    )
+    scanvi_checkpoint_callbacks = []
+    if ENABLE_TRAIN_CHECKPOINTS:
+        scanvi_checkpoint_callbacks.append(
+            scvi.train.SaveCheckpoint(
+                dirpath=str(scanvi_checkpoint_dir),
+                filename="epoch{epoch:03d}-step{step}",
+                monitor="elbo_validation",
+                mode="min",
+                save_top_k=1,
+                load_best_on_end=True,
+            )
+        )
 
     scanvi_train_kwargs = {
         "max_epochs": MAX_EPOCHS_SCANVI,
@@ -822,58 +908,96 @@ def main():
         "early_stopping_patience": 20,
         "plan_kwargs": {"lr": LEARNING_RATE, "weight_decay": WEIGHT_DECAY},
     }
+    if scanvi_checkpoint_callbacks:
+        scanvi_train_kwargs["callbacks"] = scanvi_checkpoint_callbacks
     if gpu_available:
         scanvi_train_kwargs["accelerator"] = "gpu"
         scanvi_train_kwargs["devices"] = 1
 
-    scanvi_model.train(**scanvi_train_kwargs)
-    print("  -> scANVI complete")
+    if scanvi_model_dir.exists() and not FORCE_RETRAIN:
+        print(f"  -> Loading existing scANVI model: {scanvi_model_dir}")
+        scanvi_model = scvi.model.SCANVI.load(scanvi_model_dir, adata=adata_train)
+        print("  -> scANVI model loaded (training skipped)")
+    else:
+        scanvi_resume_dir = None if FORCE_RETRAIN else _latest_saved_model_dir(scanvi_checkpoint_dir)
+        if scanvi_resume_dir is not None:
+            print(f"  -> Resuming scANVI from checkpoint snapshot: {scanvi_resume_dir}")
+            scanvi_model = scvi.model.SCANVI.load(scanvi_resume_dir, adata=adata_train)
+        else:
+            scanvi_model = scvi.model.SCANVI.from_scvi_model(
+                scvi_model,
+                adata=adata_train,
+                labels_key="scanvi_labels",
+                unlabeled_category=UNLABELED_CATEGORY
+            )
+        scanvi_model.train(**scanvi_train_kwargs)
+        print("  -> scANVI complete")
+        scanvi_model.save(scanvi_model_dir, overwrite=True)
+        print(f"  -> Saved scANVI snapshot: {scanvi_model_dir}")
 
     # --- Step 14: Export Results ---
-    print("\n[Step 14] Exporting Results...")
-
-    latent_scanvi = scanvi_model.get_latent_representation(adata_train)
-    latent_df = pd.DataFrame(
-        latent_scanvi,
-        index=adata_train.obs_names,
-        columns=[f"scANVI_{i}" for i in range(latent_scanvi.shape[1])]
+    can_resume_pre_umap = (
+        scvi_model_dir.exists()
+        and scanvi_model_dir.exists()
+        and pre_umap_h5ad.exists()
+        and not FORCE_RETRAIN
+        and not FORCE_REEXPORT
     )
-    latent_aligned = latent_df.reindex(adata_merged.obs_names)
 
-    if latent_aligned.isna().any().any():
-        raise ValueError("CRITICAL: Missing latent representation!")
+    if can_resume_pre_umap:
+        print("\n[Step 14] Loading saved post-scANVI intermediate...")
+        adata_merged = sc.read_h5ad(pre_umap_h5ad)
+        label_order = list(adata_merged.uns.get("scanvi_label_order", getattr(scanvi_model, "labels_", [])))
+        print(f"  -> Loaded: {pre_umap_h5ad}")
+        print(f"  -> Reusing exported latent/probability state before UMAP")
+    else:
+        print("\n[Step 14] Exporting Results...")
 
-    adata_merged.obsm["X_scANVI"] = latent_aligned.values
+        latent_scanvi = scanvi_model.get_latent_representation(adata_train)
+        latent_df = pd.DataFrame(
+            latent_scanvi,
+            index=adata_train.obs_names,
+            columns=[f"scANVI_{i}" for i in range(latent_scanvi.shape[1])]
+        )
+        latent_aligned = latent_df.reindex(adata_merged.obs_names)
 
-    pred_labels = scanvi_model.predict(adata_train)
-    pred_df = pd.Series(pred_labels, index=adata_train.obs_names)
-    pred_aligned = pred_df.reindex(adata_merged.obs_names)
-    adata_merged.obs["scanvi_pred"] = pred_aligned.values
+        if latent_aligned.isna().any().any():
+            raise ValueError("CRITICAL: Missing latent representation!")
 
-    # np.asarray() ensures ndarray regardless of scVI version (BUG-5 fix)
-    proba_raw = scanvi_model.predict(adata_train, soft=True)
-    proba = np.asarray(proba_raw, dtype=np.float32)
-    # scanvi_model.labels_ is the correct attribute name in current scvi-tools
-    # (older API used .labels without underscore)
-    label_order = scanvi_model.labels_
-    proba_df = pd.DataFrame(proba, index=adata_train.obs_names, columns=label_order)
-    proba_aligned = proba_df.reindex(adata_merged.obs_names)
-    adata_merged.obsm["scanvi_proba"] = proba_aligned.values
-    adata_merged.obs["scanvi_confidence"] = proba_aligned.values.max(axis=1)
+        adata_merged.obsm["X_scANVI"] = latent_aligned.values
 
-    adata_merged.uns["scanvi_label_order"] = list(label_order)
+        pred_labels = scanvi_model.predict(adata_train)
+        pred_df = pd.Series(pred_labels, index=adata_train.obs_names)
+        pred_aligned = pred_df.reindex(adata_merged.obs_names)
+        adata_merged.obs["scanvi_pred"] = pred_aligned.values
 
-    print(f"  -> scANVI predictions:")
-    print(adata_merged.obs["scanvi_pred"].value_counts().head(15))
+        # np.asarray() ensures ndarray regardless of scVI version (BUG-5 fix)
+        proba_raw = scanvi_model.predict(adata_train, soft=True)
+        proba = np.asarray(proba_raw, dtype=np.float32)
+        # scanvi_model.labels_ is the correct attribute name in current scvi-tools
+        # (older API used .labels without underscore)
+        label_order = scanvi_model.labels_
+        proba_df = pd.DataFrame(proba, index=adata_train.obs_names, columns=label_order)
+        proba_aligned = proba_df.reindex(adata_merged.obs_names)
+        adata_merged.obsm["scanvi_proba"] = proba_aligned.values
+        adata_merged.obs["scanvi_confidence"] = proba_aligned.values.max(axis=1)
 
-    compute_novelty_scores(adata_merged, proba_aligned)
+        adata_merged.uns["scanvi_label_order"] = list(label_order)
 
-    # --- Step 15: Attach .raw ---
-    print("\n[Step 15] Attaching .raw...")
-    from anndata import AnnData
+        print(f"  -> scANVI predictions:")
+        print(adata_merged.obs["scanvi_pred"].value_counts().head(15))
 
-    adata_merged.raw = AnnData(X=full_counts, obs=adata_merged.obs.copy(), var=raw_var)
-    print(f"  OK .raw: {adata_merged.raw.n_vars} genes")
+        compute_novelty_scores(adata_merged, proba_aligned)
+
+        # --- Step 15: Attach .raw ---
+        print("\n[Step 15] Attaching .raw...")
+        from anndata import AnnData
+
+        adata_merged.raw = AnnData(X=full_counts, obs=adata_merged.obs.copy(), var=raw_var)
+        print(f"  OK .raw: {adata_merged.raw.n_vars} genes")
+
+        adata_merged.write_h5ad(pre_umap_h5ad, compression="gzip")
+        print(f"  -> Saved pre-UMAP intermediate: {pre_umap_h5ad}")
 
     # --- Step 16: Multiple UMAPs (scVI + scANVI) ---
     print("\n[Step 16] Computing Multiple UMAPs...")
@@ -926,8 +1050,8 @@ def main():
     # --- Step 17: Save Results ---
     print("\n[Step 17] Saving Results...")
 
-    scanvi_model.save(output_dir / f"{OUTPUT_PREFIX}_scanvi_model", overwrite=True)
-    scvi_model.save(output_dir / f"{OUTPUT_PREFIX}_scvi_model", overwrite=True)
+    scanvi_model.save(scanvi_model_dir, overwrite=True)
+    scvi_model.save(scvi_model_dir, overwrite=True)
 
     config = {
         "version": "1.1",
@@ -955,14 +1079,12 @@ def main():
         }
     }
 
-    with open(output_dir / f"{OUTPUT_PREFIX}_config.json", "w") as f:
+    with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
 
-    output_h5ad = output_dir / f"{OUTPUT_PREFIX}_results.h5ad"
     adata_merged.write_h5ad(output_h5ad, compression="gzip")
     print(f"  -> Saved: {output_h5ad}")
 
-    train_h5ad = output_dir / f"{OUTPUT_PREFIX}_train_HVG.h5ad"
     adata_train.write_h5ad(train_h5ad, compression="gzip")
 
     # --- Step 18: Myeloid Specific Visualization ---

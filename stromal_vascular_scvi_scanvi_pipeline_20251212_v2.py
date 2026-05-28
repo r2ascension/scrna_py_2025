@@ -18,6 +18,7 @@ All v2.2 features retained:
 - ✅ Rare type filtering (<10 cells → Unknown)
 - ✅ neighbors_key to avoid UMAP collision
 - ✅ Separate adata_model from main adata
+- ✅ Optional reuse of pre-bridged external labels_for_scanvi contracts
 
 All v2.1 fixes retained:
 - ✅ Gene alignment (normalize_gene_names BEFORE raw creation)
@@ -46,7 +47,7 @@ import scvi
 import torch
 import matplotlib.pyplot as plt
 from scipy import sparse
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 # CellTypist
 import celltypist
@@ -454,6 +455,107 @@ def merge_rare_types(s: pd.Series, min_cells: int = 10, other: str = "Unknown") 
     return s
 
 
+def normalize_unknown_labels(series: pd.Series, unknown_label: str = "Unknown") -> pd.Series:
+    """Normalize empty / NA-like labels to the designated unknown label."""
+    out = series.astype('string').fillna(unknown_label).astype(str).str.strip()
+    return out.replace({"": unknown_label, "nan": unknown_label, "None": unknown_label, "<NA>": unknown_label})
+
+
+def first_nonempty_value(series: pd.Series) -> Optional[str]:
+    """Return the first non-empty value from a series, if any."""
+    values = series.astype('string').dropna().astype(str).str.strip()
+    values = values[values != ""]
+    if values.empty:
+        return None
+    return str(values.iloc[0])
+
+
+def detect_precomputed_scanvi_contract(adata: sc.AnnData) -> Dict[str, Optional[str]]:
+    """Detect whether an input AnnData already carries bridged downstream labels."""
+    has_labels = 'labels_for_scanvi' in adata.obs.columns
+    has_source = 'annotation_source_selected' in adata.obs.columns
+    if not (has_labels and has_source):
+        return {
+            'available': False,
+            'source': None,
+            'label_column': None,
+        }
+
+    source = first_nonempty_value(adata.obs['annotation_source_selected'])
+    label_column = first_nonempty_value(adata.obs['annotation_label_selected']) if 'annotation_label_selected' in adata.obs.columns else None
+    return {
+        'available': True,
+        'source': source,
+        'label_column': label_column,
+    }
+
+
+def adopt_three_way_annotation_columns(adata: sc.AnnData) -> Dict[str, str]:
+    """Adopt three-way workflow alias columns into this pipeline's expected column names."""
+    adopted: Dict[str, str] = {}
+
+    if 'cell_type_celltypist_raw' not in adata.obs.columns and 'cell_type_celltypist_scextract' in adata.obs.columns:
+        adata.obs['cell_type_celltypist_raw'] = adata.obs['cell_type_celltypist_scextract'].astype(str).values
+        adopted['cell_type_celltypist_raw'] = 'cell_type_celltypist_scextract'
+
+    if 'celltypist_confidence' not in adata.obs.columns and 'celltypist_confidence_scextract' in adata.obs.columns:
+        adata.obs['celltypist_confidence'] = pd.to_numeric(adata.obs['celltypist_confidence_scextract'], errors='coerce').values
+        adopted['celltypist_confidence'] = 'celltypist_confidence_scextract'
+
+    return adopted
+
+
+def ensure_celltypist_filtered_from_existing_labels(
+    adata: sc.AnnData,
+    min_confidence: float,
+    min_cells: int,
+    unknown_label: str,
+) -> bool:
+    """Derive filtered CellTypist labels from existing raw/confidence columns if missing."""
+    if 'cell_type_celltypist_filt' in adata.obs.columns:
+        return True
+    if 'cell_type_celltypist_raw' not in adata.obs.columns:
+        return False
+
+    ct_raw = normalize_unknown_labels(adata.obs['cell_type_celltypist_raw'], unknown_label)
+    if 'celltypist_confidence' in adata.obs.columns:
+        confidence = pd.to_numeric(adata.obs['celltypist_confidence'], errors='coerce')
+        ct_lc = ct_raw.where(confidence >= float(min_confidence), unknown_label)
+    else:
+        ct_lc = ct_raw.copy()
+
+    ct_filt = merge_rare_types(ct_lc, min_cells=min_cells, other=unknown_label)
+    adata.obs['cell_type_celltypist_filt'] = ct_filt.astype('category')
+    return True
+
+
+def prepare_existing_scanvi_labels(
+    adata: sc.AnnData,
+    adata_model: sc.AnnData,
+    unknown_label: str,
+) -> pd.Series:
+    """Normalize precomputed labels_for_scanvi and align them to adata_model."""
+    if 'labels_for_scanvi' not in adata.obs.columns:
+        raise KeyError("labels_for_scanvi not found in input AnnData")
+
+    labels = normalize_unknown_labels(adata.obs['labels_for_scanvi'], unknown_label)
+    labels = labels.astype('category')
+    if unknown_label not in labels.cat.categories:
+        labels = labels.cat.add_categories([unknown_label])
+
+    non_unknown = int((labels.astype(str) != unknown_label).sum())
+    if non_unknown == 0:
+        raise ValueError(
+            "Input AnnData already contains labels_for_scanvi, but all labels are Unknown. "
+            "This usually means compare-only output was passed into a supervised scANVI pipeline. "
+            "Please bridge with a concrete selected_label_source before training."
+        )
+
+    adata.obs['labels_for_scanvi'] = labels
+    adata_model.obs['labels_for_scanvi'] = labels.values
+    return labels
+
+
 def save_celltype_counts(counts_dict: Dict[str, pd.Series], output_dir: Path) -> None:
     """Save cell type count statistics to CSV files"""
     for name, series in counts_dict.items():
@@ -802,6 +904,29 @@ latent_scvi = scvi_model.get_latent_representation(adata_model)
 adata.obsm['X_scvi'] = latent_scvi  # Index-aligned by construction
 print(f"✓ X_scvi: {adata.obsm['X_scvi'].shape}")
 
+precomputed_contract = detect_precomputed_scanvi_contract(adata)
+using_precomputed_contract = bool(precomputed_contract['available'])
+adopted_annotation_cols: Dict[str, str] = {}
+scanvi_label_source_used = 'celltypist_filtered'
+scanvi_label_column_used = 'cell_type_celltypist_filt'
+
+if using_precomputed_contract:
+    print(f"\n⭐ Detected precomputed downstream label contract in input h5ad")
+    print(f"   annotation_source_selected: {precomputed_contract['source']}")
+    print(f"   annotation_label_selected: {precomputed_contract['label_column'] or 'labels_for_scanvi'}")
+    if precomputed_contract['source'] == 'compare_only':
+        raise ValueError(
+            "Input h5ad carries compare_only labels_for_scanvi; this pipeline trains scANVI and therefore requires "
+            "a concrete selected_label_source instead of compare_only."
+        )
+
+    adopted_annotation_cols = adopt_three_way_annotation_columns(adata)
+    if adopted_annotation_cols:
+        print(f"   Adopted external annotation columns: {adopted_annotation_cols}")
+
+    scanvi_label_source_used = precomputed_contract['source'] or 'external_bridge'
+    scanvi_label_column_used = precomputed_contract['label_column'] or 'labels_for_scanvi'
+
 # ============================================================================
 # STEP 6: CELLTYPIST ANNOTATION ON MAIN ADATA
 # ============================================================================
@@ -810,83 +935,96 @@ print("\n" + "="*80)
 print("STEP 6: CELLTYPIST ANNOTATION (ON FULL GENES)")
 print("="*80)
 
-if not Path(CELLTYPIST_MODEL).exists():
-    raise FileNotFoundError(f"CellTypist model not found: {CELLTYPIST_MODEL}")
+if using_precomputed_contract:
+    print(f"\n⏭️  Skipping CellTypist inference because labels_for_scanvi already exists in input")
+    print(f"   Reusing bridged source: {scanvi_label_source_used}")
+    if 'cell_type_celltypist_raw' in adata.obs.columns:
+        ct_types = adata.obs['cell_type_celltypist_raw'].astype(str).nunique()
+        print(f"   Existing CellTypist-like labels detected: {ct_types}")
+    else:
+        print("   No external CellTypist raw labels available for comparison plots")
+    if 'celltypist_confidence' in adata.obs.columns:
+        ct_mean_conf = float(np.nanmean(pd.to_numeric(adata.obs['celltypist_confidence'], errors='coerce')))
+        print(f"   Existing CellTypist confidence mean: {ct_mean_conf:.3f}")
+else:
+    if not Path(CELLTYPIST_MODEL).exists():
+        raise FileNotFoundError(f"CellTypist model not found: {CELLTYPIST_MODEL}")
 
-print(f"\nLoading CellTypist model: {Path(CELLTYPIST_MODEL).name}")
-ct_model = models.Model.load(CELLTYPIST_MODEL)
+    print(f"\nLoading CellTypist model: {Path(CELLTYPIST_MODEL).name}")
+    ct_model = models.Model.load(CELLTYPIST_MODEL)
 
-# Get model features if available
-model_features = None
-for attr in ('features', 'genes', 'feature_names'):
-    if hasattr(ct_model, attr):
-        feats = getattr(ct_model, attr)
-        try:
-            model_features = pd.Index([str(x) for x in feats])
-            print(f"✓ Model features: {len(model_features):,}")
-            break
-        except Exception:
-            pass
+    # Get model features if available
+    model_features = None
+    for attr in ('features', 'genes', 'feature_names'):
+        if hasattr(ct_model, attr):
+            feats = getattr(ct_model, attr)
+            try:
+                model_features = pd.Index([str(x) for x in feats])
+                print(f"✓ Model features: {len(model_features):,}")
+                break
+            except Exception:
+                pass
 
-if model_features is None:
-    print("⚠️  Model features not accessible")
+    if model_features is None:
+        print("⚠️  Model features not accessible")
 
-# Build CellTypist input from MAIN adata (full genes via .raw)
-print(f"\nBuilding CellTypist input from main adata.raw...")
-ad_ct = build_celltypist_input(adata, model_features=model_features, counts_layer='counts')
-print(f"✓ CellTypist input: {ad_ct.n_obs:,} cells × {ad_ct.n_vars:,} genes")
+    # Build CellTypist input from MAIN adata (full genes via .raw)
+    print(f"\nBuilding CellTypist input from main adata.raw...")
+    ad_ct = build_celltypist_input(adata, model_features=model_features, counts_layer='counts')
+    print(f"✓ CellTypist input: {ad_ct.n_obs:,} cells × {ad_ct.n_vars:,} genes")
 
-# Verify gene alignment
-if model_features is not None:
-    overlap = len(set(ad_ct.var_names) & set(model_features))
-    print(f"   Gene overlap with model: {overlap}/{len(model_features)} ({overlap/len(model_features)*100:.1f}%)")
+    # Verify gene alignment
+    if model_features is not None:
+        overlap = len(set(ad_ct.var_names) & set(model_features))
+        print(f"   Gene overlap with model: {overlap}/{len(model_features)} ({overlap/len(model_features)*100:.1f}%)")
 
-# Run CellTypist
-print(f"\nRunning CellTypist (majority_voting={CELLTYPIST_MAJORITY_VOTING})...")
-pred = celltypist.annotate(
-    ad_ct,
-    model=ct_model,
-    majority_voting=CELLTYPIST_MAJORITY_VOTING
-)
-
-# ⭐ CRITICAL FIX: Index-aligned result writing
-print(f"\n⭐ Writing CellTypist results (index-aligned)...")
-pred_df = pred.predicted_labels.copy()
-pred_df.index = ad_ct.obs_names  # Should match adata.obs_names
-
-# Use reindex for safety
-adata.obs['cell_type_celltypist_raw'] = (
-    pred_df['predicted_labels'].astype(str).reindex(adata.obs_names).values
-)
-
-if CELLTYPIST_MAJORITY_VOTING and 'majority_voting' in pred_df.columns:
-    adata.obs['cell_type_celltypist_majority_raw'] = (
-        pred_df['majority_voting'].astype(str).reindex(adata.obs_names).values
+    # Run CellTypist
+    print(f"\nRunning CellTypist (majority_voting={CELLTYPIST_MAJORITY_VOTING})...")
+    pred = celltypist.annotate(
+        ad_ct,
+        model=ct_model,
+        majority_voting=CELLTYPIST_MAJORITY_VOTING
     )
 
-# Confidence scores
-confidence = extract_celltypist_confidence(pred)
-adata.obs['celltypist_confidence'] = confidence
+    # ⭐ CRITICAL FIX: Index-aligned result writing
+    print(f"\n⭐ Writing CellTypist results (index-aligned)...")
+    pred_df = pred.predicted_labels.copy()
+    pred_df.index = ad_ct.obs_names  # Should match adata.obs_names
 
-# Cleanup
-del ad_ct, pred, pred_df
-gc.collect()
+    # Use reindex for safety
+    adata.obs['cell_type_celltypist_raw'] = (
+        pred_df['predicted_labels'].astype(str).reindex(adata.obs_names).values
+    )
 
-# Summary
-ct_types = adata.obs['cell_type_celltypist_raw'].nunique()
-ct_mean_conf = float(np.mean(adata.obs['celltypist_confidence']))
-print(f"\n✓ CellTypist complete")
-print(f"   Unique types (raw): {ct_types}")
-print(f"   Mean confidence: {ct_mean_conf:.3f}")
+    if CELLTYPIST_MAJORITY_VOTING and 'majority_voting' in pred_df.columns:
+        adata.obs['cell_type_celltypist_majority_raw'] = (
+            pred_df['majority_voting'].astype(str).reindex(adata.obs_names).values
+        )
+
+    # Confidence scores
+    confidence = extract_celltypist_confidence(pred)
+    adata.obs['celltypist_confidence'] = confidence
+
+    # Cleanup
+    del ad_ct, pred, pred_df
+    gc.collect()
+
+    # Summary
+    ct_types = adata.obs['cell_type_celltypist_raw'].nunique()
+    ct_mean_conf = float(np.mean(adata.obs['celltypist_confidence']))
+    print(f"\n✓ CellTypist complete")
+    print(f"   Unique types (raw): {ct_types}")
+    print(f"   Mean confidence: {ct_mean_conf:.3f}")
 
 # ⭐ NEW: Save raw counts for audit
-print(f"\nSaving CellTypist raw counts...")
-save_celltype_counts(
-    {
-        'celltypist_counts_raw': adata.obs['cell_type_celltypist_raw'].value_counts()
-    },
-    output_dir
-)
+if 'cell_type_celltypist_raw' in adata.obs.columns:
+    print(f"\nSaving CellTypist raw counts...")
+    save_celltype_counts(
+        {
+            'celltypist_counts_raw': adata.obs['cell_type_celltypist_raw'].value_counts()
+        },
+        output_dir
+    )
 
 # ============================================================================
 # STEP 7: PREPARE scANVI LABELS (WITH RARE TYPE FILTERING - FIXED)
@@ -896,40 +1034,63 @@ print("\n" + "="*80)
 print("STEP 7: PREPARE scANVI LABELS (WITH RARE TYPE FILTERING)")
 print("="*80)
 
-print(f"\n⭐ Creating scANVI training labels from CellTypist...")
-print(f"   Low confidence threshold: {CELLTYPIST_MIN_CONFIDENCE}")
-print(f"   Rare type threshold: {MIN_CELLS_PER_TYPE} cells")
+if using_precomputed_contract:
+    print(f"\n⭐ Reusing precomputed labels_for_scanvi from upstream bridge")
+    print(f"   Selected source: {scanvi_label_source_used}")
+    print(f"   Selected label column: {scanvi_label_column_used}")
+    print(f"   Low confidence threshold (CellTypist audit only): {CELLTYPIST_MIN_CONFIDENCE}")
+    print(f"   Rare type threshold (CellTypist audit only): {MIN_CELLS_PER_TYPE} cells")
 
-# Start with raw CellTypist predictions
-ct_raw = adata.obs['cell_type_celltypist_raw'].astype(str)
+    if ensure_celltypist_filtered_from_existing_labels(
+        adata,
+        min_confidence=CELLTYPIST_MIN_CONFIDENCE,
+        min_cells=MIN_CELLS_PER_TYPE,
+        unknown_label=SCANVI_UNLABELED_CATEGORY,
+    ):
+        print("   ✓ Derived/confirmed cell_type_celltypist_filt for comparison plots")
+    else:
+        print("   ⚠️  cell_type_celltypist_filt unavailable; plots will use selected source only")
 
-# Step 1: Low confidence → Unknown
-print(f"\nStep 1: Handling low confidence cells...")
-ct_lc = ct_raw.where(
-    adata.obs['celltypist_confidence'] >= CELLTYPIST_MIN_CONFIDENCE,
-    SCANVI_UNLABELED_CATEGORY
-)
-n_low_conf = (ct_lc == SCANVI_UNLABELED_CATEGORY).sum()
-print(f"   Low confidence → Unknown: {n_low_conf:,} cells")
+    labels = prepare_existing_scanvi_labels(
+        adata,
+        adata_model,
+        unknown_label=SCANVI_UNLABELED_CATEGORY,
+    )
+else:
+    print(f"\n⭐ Creating scANVI training labels from CellTypist...")
+    print(f"   Low confidence threshold: {CELLTYPIST_MIN_CONFIDENCE}")
+    print(f"   Rare type threshold: {MIN_CELLS_PER_TYPE} cells")
 
-# Step 2: Rare types → Unknown (KEY FOR STABILITY)
-print(f"\nStep 2: Merging rare types...")
-ct_filt = merge_rare_types(
-    ct_lc,
-    min_cells=MIN_CELLS_PER_TYPE,
-    other=SCANVI_UNLABELED_CATEGORY
-)
+    # Start with raw CellTypist predictions
+    ct_raw = adata.obs['cell_type_celltypist_raw'].astype(str)
 
-# Save both versions
-adata.obs['cell_type_celltypist_filt'] = ct_filt
+    # Step 1: Low confidence → Unknown
+    print(f"\nStep 1: Handling low confidence cells...")
+    ct_lc = ct_raw.where(
+        adata.obs['celltypist_confidence'] >= CELLTYPIST_MIN_CONFIDENCE,
+        SCANVI_UNLABELED_CATEGORY
+    )
+    n_low_conf = (ct_lc == SCANVI_UNLABELED_CATEGORY).sum()
+    print(f"   Low confidence → Unknown: {n_low_conf:,} cells")
 
-# ⭐ CRITICAL FIX: Use Series.astype('category'), not pd.Categorical
-labels = ct_filt.astype('category')
-if SCANVI_UNLABELED_CATEGORY not in labels.cat.categories:
-    labels = labels.cat.add_categories([SCANVI_UNLABELED_CATEGORY])
+    # Step 2: Rare types → Unknown (KEY FOR STABILITY)
+    print(f"\nStep 2: Merging rare types...")
+    ct_filt = merge_rare_types(
+        ct_lc,
+        min_cells=MIN_CELLS_PER_TYPE,
+        other=SCANVI_UNLABELED_CATEGORY
+    )
 
-adata.obs['labels_for_scanvi'] = labels
-adata_model.obs['labels_for_scanvi'] = labels.values
+    # Save both versions
+    adata.obs['cell_type_celltypist_filt'] = ct_filt
+
+    # ⭐ CRITICAL FIX: Use Series.astype('category'), not pd.Categorical
+    labels = ct_filt.astype('category')
+    if SCANVI_UNLABELED_CATEGORY not in labels.cat.categories:
+        labels = labels.cat.add_categories([SCANVI_UNLABELED_CATEGORY])
+
+    adata.obs['labels_for_scanvi'] = labels
+    adata_model.obs['labels_for_scanvi'] = labels.values
 
 # Statistics
 n_unknown = int((labels == SCANVI_UNLABELED_CATEGORY).sum())
@@ -942,13 +1103,14 @@ print(f"   Unknown cells: {n_unknown:,} ({n_unknown/adata.n_obs*100:.1f}%)")
 print(f"   Unique types (excl. Unknown): {n_unique_types}")
 
 # ⭐ NEW: Save filtered counts for audit
-print(f"\nSaving CellTypist filtered counts...")
-save_celltype_counts(
-    {
-        'celltypist_counts_filt': adata.obs['cell_type_celltypist_filt'].value_counts()
-    },
-    output_dir
-)
+if 'cell_type_celltypist_filt' in adata.obs.columns:
+    print(f"\nSaving CellTypist filtered counts...")
+    save_celltype_counts(
+        {
+            'celltypist_counts_filt': adata.obs['cell_type_celltypist_filt'].value_counts()
+        },
+        output_dir
+    )
 
 # ============================================================================
 # STEP 8: scANVI MODEL TRAINING (WITH FILTERED LABELS)
@@ -963,7 +1125,8 @@ trained_scanvi_this_run = False
 
 print(f"\nscANVI configuration:")
 print(f"   Base: scVI (pre-trained)")
-print(f"   Labels: labels_for_scanvi (filtered CellTypist)")
+print(f"   Labels: labels_for_scanvi (source={scanvi_label_source_used})")
+print(f"   Source column: {scanvi_label_column_used}")
 print(f"   Unknown: {SCANVI_UNLABELED_CATEGORY}")
 
 # Load or train scANVI
@@ -1092,6 +1255,19 @@ sc.tl.umap(adata, neighbors_key='neighbors_scanvi')
 adata.obsm['X_umap_scanvi'] = adata.obsm['X_umap'].copy()
 print(f"✓ UMAP(scANVI) stored in X_umap_scanvi: {adata.obsm['X_umap_scanvi'].shape}")
 
+comparison_label_col = 'cell_type_celltypist_filt' if 'cell_type_celltypist_filt' in adata.obs.columns else None
+if comparison_label_col is None and scanvi_label_column_used in adata.obs.columns:
+    comparison_label_col = scanvi_label_column_used
+if comparison_label_col is None and 'labels_for_scanvi' in adata.obs.columns:
+    comparison_label_col = 'labels_for_scanvi'
+
+if comparison_label_col == 'cell_type_celltypist_filt':
+    comparison_label_title_scvi = 'CellTypist (filtered, scVI)'
+    comparison_label_title_scanvi = 'CellTypist (filtered, scANVI space)'
+else:
+    comparison_label_title_scvi = f'Input labels ({scanvi_label_source_used}, scVI)'
+    comparison_label_title_scanvi = f'Input labels ({scanvi_label_source_used}, scANVI space)'
+
 # ========== Figure A: scVI space (includes CellTypist) ==========
 print(f"\nGenerating scVI comparison plot...")
 fig, axes = plt.subplots(1, 4, figsize=(22, 6))
@@ -1107,29 +1283,37 @@ sc.pl.embedding(
     frameon=False
 )
 
-sc.pl.embedding(
-    adata,
-    basis='umap_scvi',
-    color='cell_type_celltypist_filt',
-    ax=axes[1],
-    show=False,
-    title='CellTypist (filtered, scVI)',
-    size=UMAP_SIZE,
-    legend_loc='right margin',
-    frameon=False
-)
+if comparison_label_col is not None:
+    sc.pl.embedding(
+        adata,
+        basis='umap_scvi',
+        color=comparison_label_col,
+        ax=axes[1],
+        show=False,
+        title=comparison_label_title_scvi,
+        size=UMAP_SIZE,
+        legend_loc='right margin',
+        frameon=False
+    )
+else:
+    axes[1].axis('off')
+    axes[1].text(0.5, 0.5, 'No comparison labels', ha='center', va='center')
 
-sc.pl.embedding(
-    adata,
-    basis='umap_scvi',
-    color='celltypist_confidence',
-    ax=axes[2],
-    show=False,
-    title='CellTypist Confidence (scVI)',
-    size=UMAP_SIZE,
-    cmap='viridis',
-    frameon=False
-)
+if 'celltypist_confidence' in adata.obs.columns:
+    sc.pl.embedding(
+        adata,
+        basis='umap_scvi',
+        color='celltypist_confidence',
+        ax=axes[2],
+        show=False,
+        title='CellTypist Confidence (scVI)',
+        size=UMAP_SIZE,
+        cmap='viridis',
+        frameon=False
+    )
+else:
+    axes[2].axis('off')
+    axes[2].text(0.5, 0.5, 'No CellTypist confidence', ha='center', va='center')
 
 sc.pl.embedding(
     adata,
@@ -1186,17 +1370,21 @@ sc.pl.embedding(
     frameon=False
 )
 
-sc.pl.embedding(
-    adata,
-    basis='umap_scanvi',
-    color='cell_type_celltypist_filt',
-    ax=axes[3],
-    show=False,
-    title='CellTypist (filtered, scANVI space)',
-    size=UMAP_SIZE,
-    legend_loc='right margin',
-    frameon=False
-)
+if comparison_label_col is not None:
+    sc.pl.embedding(
+        adata,
+        basis='umap_scanvi',
+        color=comparison_label_col,
+        ax=axes[3],
+        show=False,
+        title=comparison_label_title_scanvi,
+        size=UMAP_SIZE,
+        legend_loc='right margin',
+        frameon=False
+    )
+else:
+    axes[3].axis('off')
+    axes[3].text(0.5, 0.5, 'No comparison labels', ha='center', va='center')
 
 plt.tight_layout()
 plt.savefig(fig_dir / f'comparison_scanvi.{FIGURE_FORMAT}', dpi=DPI, bbox_inches='tight')
@@ -1258,7 +1446,10 @@ adata.uns['pipeline_info'] = {
     'celltypist_model': str(CELLTYPIST_MODEL),
     'celltypist_confidence_threshold': CELLTYPIST_MIN_CONFIDENCE,
     'min_cells_per_type': MIN_CELLS_PER_TYPE,
-    'scanvi_label_source': 'celltypist_filtered',
+    'scanvi_label_source': scanvi_label_source_used,
+    'scanvi_label_column': scanvi_label_column_used,
+    'reused_precomputed_contract': using_precomputed_contract,
+    'adopted_annotation_columns': adopted_annotation_cols,
     'scvi_trained_this_run': trained_scvi_this_run,
     'scanvi_trained_this_run': trained_scanvi_this_run,
     'critical_fixes_v2_3': [
@@ -1290,16 +1481,25 @@ print(f"\n✓ Saved: {checkpoint_file}")
 print(f"   Size: {size_gb:.2f} GB")
 
 # Export annotations
-annotations = adata.obs[[
+annotation_cols = [
     MAJOR_CELLTYPE_KEY,
+    'cell_type_scextract',
+    'cell_type_celltypist_scextract',
+    'cell_type_sctype_scextract',
     'cell_type_celltypist_raw',
     'cell_type_celltypist_filt',
     'celltypist_confidence',
     'cell_type_scanvi_raw',
     'cell_type_scanvi_filt',
     'scanvi_confidence',
-    BATCH_KEY
-]].copy()
+    'labels_for_scanvi',
+    'annotation_source_selected',
+    'annotation_label_selected',
+    'scanvi_label_source',
+    BATCH_KEY,
+]
+annotation_cols = [col for col in annotation_cols if col in adata.obs.columns]
+annotations = adata.obs[annotation_cols].copy()
 annotations.to_csv(output_dir / "annotations_complete.csv")
 print(f"✓ Annotations exported")
 
@@ -1321,9 +1521,18 @@ print(f"   Genes (HVG for training): {adata.uns['n_hvg']}")
 print(f"   Batches: {adata.obs[BATCH_KEY].nunique()}")
 
 print(f"\n⭐ CellTypist Results:")
-print(f"   Unique types (raw): {adata.obs['cell_type_celltypist_raw'].nunique()}")
-print(f"   Unique types (filtered): {adata.obs['cell_type_celltypist_filt'].nunique()}")
-print(f"   Mean confidence: {float(np.mean(adata.obs['celltypist_confidence'])):.3f}")
+if 'cell_type_celltypist_raw' in adata.obs.columns:
+    print(f"   Unique types (raw): {adata.obs['cell_type_celltypist_raw'].nunique()}")
+else:
+    print(f"   Unique types (raw): n/a")
+if 'cell_type_celltypist_filt' in adata.obs.columns:
+    print(f"   Unique types (filtered): {adata.obs['cell_type_celltypist_filt'].nunique()}")
+else:
+    print(f"   Unique types (filtered): n/a")
+if 'celltypist_confidence' in adata.obs.columns:
+    print(f"   Mean confidence: {float(np.nanmean(pd.to_numeric(adata.obs['celltypist_confidence'], errors='coerce'))):.3f}")
+else:
+    print(f"   Mean confidence: n/a")
 
 print(f"\n⭐ scANVI Results:")
 print(f"   Unique types (raw): {adata.obs['cell_type_scanvi_raw'].nunique()}")
@@ -1331,15 +1540,18 @@ print(f"   Unique types (filtered): {adata.obs['cell_type_scanvi_filt'].nunique(
 print(f"   Mean confidence: {float(np.mean(adata.obs['scanvi_confidence'])):.3f}")
 
 # Agreement stats (using filtered versions)
-ct_series = adata.obs['cell_type_celltypist_filt'].astype('object')
-scanvi_series = adata.obs['cell_type_scanvi_filt'].astype('object')
-agreement_mask = (
-    (ct_series == scanvi_series)
-    | (pd.isna(ct_series) & pd.isna(scanvi_series))
-)
-ct_to_scanvi = int(agreement_mask.sum())
-agreement_pct = ct_to_scanvi / adata.n_obs * 100
-print(f"   CellTypist-scANVI agreement (filtered): {agreement_pct:.1f}%")
+if 'cell_type_celltypist_filt' in adata.obs.columns:
+    ct_series = adata.obs['cell_type_celltypist_filt'].astype('object')
+    scanvi_series = adata.obs['cell_type_scanvi_filt'].astype('object')
+    agreement_mask = (
+        (ct_series == scanvi_series)
+        | (pd.isna(ct_series) & pd.isna(scanvi_series))
+    )
+    ct_to_scanvi = int(agreement_mask.sum())
+    agreement_pct = ct_to_scanvi / adata.n_obs * 100
+    print(f"   CellTypist-scANVI agreement (filtered): {agreement_pct:.1f}%")
+else:
+    print(f"   CellTypist-scANVI agreement (filtered): n/a")
 
 print(f"\n🔧 Critical Fixes Applied (v2.3 - Must-fix):")
 print(f"   ✅ MARKER_GENES syntax error (quote mismatch)")

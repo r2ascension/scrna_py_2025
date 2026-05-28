@@ -44,6 +44,9 @@ def run_config_discovery(repo_root: Path, methods_doc: Path, out_dir: Path) -> d
 
     reference_df = records_df.loc[records_df["role"] == "allcells_reference"].copy()
     write_tsv(out_dir / "discovered_allcells_reference_candidates.tsv", reference_df)
+    candidate_audit_df = pd.DataFrame(inventory.get("allcells_reference_candidate_audit", []))
+    if not candidate_audit_df.empty:
+        write_tsv(out_dir / "discovered_allcells_reference_candidate_audit.tsv", candidate_audit_df)
 
     query_df = records_df.loc[records_df["role"] == "mapped_query"].copy()
     write_tsv(out_dir / "discovered_mapped_query_candidates.tsv", query_df)

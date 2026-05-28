@@ -11,6 +11,7 @@ from non_unified_airway.common import (  # noqa: E402
     add_canonical_fields,
     build_sample_manifest,
     discover_lineage_output_dirs,
+    rank_allcells_candidate_summaries,
     recommend_model_formulas,
 )
 
@@ -106,9 +107,55 @@ def test_recommend_model_formulas_downgrades_when_site_is_fully_confounded() -> 
     assert plan["healthy_mainline"]["formula"] == "~ tissue_site_disease"
 
 
+def test_rank_allcells_candidate_summaries_prefers_multisite_healthy_candidate() -> None:
+    ranked = rank_allcells_candidate_summaries(
+        [
+            {
+                "path": "/tmp/legacy_no_counts.h5ad",
+                "exists": True,
+                "candidate_audit_error": "",
+                "has_counts_layer": False,
+                "n_healthy_site_groups": 0,
+                "n_healthy_samples": 0,
+                "n_site_groups": 2,
+                "n_obs": 600000,
+                "raw_var_n": 0,
+            },
+            {
+                "path": "/tmp/modern_counts_single_site.h5ad",
+                "exists": True,
+                "candidate_audit_error": "",
+                "has_counts_layer": True,
+                "n_healthy_site_groups": 1,
+                "n_healthy_samples": 10,
+                "n_site_groups": 4,
+                "n_obs": 250000,
+                "raw_var_n": 43000,
+            },
+            {
+                "path": "/tmp/best_multisite_counts.h5ad",
+                "exists": True,
+                "candidate_audit_error": "",
+                "has_counts_layer": True,
+                "n_healthy_site_groups": 3,
+                "n_healthy_samples": 18,
+                "n_site_groups": 5,
+                "n_obs": 300000,
+                "raw_var_n": 43000,
+            },
+        ]
+    )
+
+    assert ranked.iloc[0]["path"] == "/tmp/best_multisite_counts.h5ad"
+    assert bool(ranked.iloc[0]["selected"]) is True
+    assert "healthy-site coverage" in ranked.iloc[0]["selection_reason"]
+    assert bool(ranked.loc[ranked["path"] == "/tmp/modern_counts_single_site.h5ad", "selected"].iloc[0]) is False
+
+
 if __name__ == "__main__":
     test_discover_lineage_output_dirs_parses_methods_table_paths()
     test_add_canonical_fields_builds_site_and_disease_groups()
     test_recommend_model_formulas_prefers_dataset_adjusted_models_when_estimable()
     test_recommend_model_formulas_downgrades_when_site_is_fully_confounded()
+    test_rank_allcells_candidate_summaries_prefers_multisite_healthy_candidate()
     print("non-unified airway common tests passed")

@@ -102,7 +102,6 @@ _gene_exclusion_module = importlib.util.module_from_spec(_gene_exclusion_spec)
 sys.modules[_gene_exclusion_spec.name] = _gene_exclusion_module
 _gene_exclusion_spec.loader.exec_module(_gene_exclusion_module)
 apply_gene_exclusion_to_adata = _gene_exclusion_module.apply_gene_exclusion_to_adata
-build_gene_exclusion_packet = _gene_exclusion_module.build_gene_exclusion_packet
 
 # ============================================================================
 # DEFAULT CONFIGURATION
@@ -141,37 +140,6 @@ DEFAULT_K_SELECT_CONFIG = {
     'optimal_sparsity_min' : 0.3,
     'optimal_sparsity_max' : 0.7,
 }
-
-
-def filter_scores_by_gene_exclusion(
-    scores: pd.Series,
-    gene_exclusion_config: Optional[Dict[str, Any]] = None,
-    lineage_context: str = '',
-) -> pd.Series:
-    """Remove genes flagged by the shared program gene-exclusion contract.
-
-    cNMF spectra may come from older runs or external files. Applying the same
-    exclusion contract at export/plot time prevents clone-style lncRNA symbols
-    such as AL114490.2 or AC124014.1 from entering GEP tables and LLM prompts.
-    """
-    if scores is None or len(scores) == 0:
-        return scores
-    cfg = dict(gene_exclusion_config or {})
-    context = str(lineage_context or cfg.get('lineage_context') or '')
-    try:
-        packet = build_gene_exclusion_packet(
-            gene_names=[str(g) for g in scores.index.tolist()],
-            spec=cfg if cfg else None,
-            lineage_context=context,
-            annotation_df=cfg.get('annotation_df') if isinstance(cfg, dict) else None,
-            annotation_path=cfg.get('annotation_path') if isinstance(cfg, dict) else None,
-        )
-        audit = packet['audit_df']
-        keep_genes = audit.loc[~audit['should_exclude'].astype(bool), 'gene_symbol'].astype(str).tolist()
-        return scores.loc[[g for g in keep_genes if g in scores.index]]
-    except Exception as e:
-        logger.warning(f"  [WARN] Gene exclusion during GEP ranking failed; using unfiltered scores: {e}")
-        return scores
 
 # Technical gene lists
 TECHNICAL_GENES = {
@@ -814,258 +782,6 @@ def load_gep_matrix(
     return mat
 
 
-def normalize_gep_column_names(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize usage/spectra column labels to the stable GEP_1..GEP_k form."""
-    if df is None:
-        return df
-    out = df.copy()
-    out.index = out.index.astype(str)
-    cols = [str(col) for col in out.columns]
-    if all(col.startswith('GEP_') for col in cols):
-        out.columns = cols
-        return out
-    if all(col.isdigit() for col in cols):
-        out.columns = [f'GEP_{int(col)}' for col in cols]
-        return out
-    out.columns = cols
-    return out
-
-
-def load_dataframe_npz(npz_path: Path) -> Optional[pd.DataFrame]:
-    """Load a pandas-like DataFrame stored as data/index/columns npz arrays."""
-    try:
-        npz = np.load(npz_path, allow_pickle=True)
-        required = {'data', 'index', 'columns'}
-        if not required.issubset(set(npz.files)):
-            logger.warning(f"  [WARN] NPZ missing expected keys: {npz_path.name}")
-            return None
-        df = pd.DataFrame(
-            np.asarray(npz['data']),
-            index=np.asarray(npz['index']).astype(str),
-            columns=[str(col) for col in np.asarray(npz['columns'])],
-        )
-        return df
-    except Exception as e:
-        logger.warning(f"  [WARN] Failed to load npz DataFrame {npz_path.name}: {e}")
-        return None
-
-
-def save_dataframe_npz(df: pd.DataFrame, npz_path: Path) -> None:
-    """Persist a DataFrame using the same data/index/columns npz convention."""
-    npz_path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        npz_path,
-        data=np.asarray(df.values),
-        index=np.asarray(df.index.astype(str), dtype=object),
-        columns=np.asarray([str(col) for col in df.columns], dtype=object),
-    )
-
-
-def usage_dataframe_has_signal(df: Optional[pd.DataFrame]) -> bool:
-    """Return True when a usage-like matrix contains at least some finite, non-zero signal."""
-    if df is None or df.empty:
-        return False
-    vals = np.asarray(df.values, dtype=float)
-    if vals.size == 0 or not np.isfinite(vals).any():
-        return False
-    vals = np.nan_to_num(vals, nan=0.0, posinf=0.0, neginf=0.0)
-    return float(np.abs(vals).sum()) > 0.0
-
-
-def find_gep_tpm_file(
-    cnmf_run_dir : Path,
-    name         : str,
-    k            : int,
-) -> Optional[Path]:
-    """Locate the gene_spectra_tpm file used for reconstructing per-cell usage."""
-    cnmf_tmp_dir = cnmf_run_dir / 'cnmf_tmp'
-    if cnmf_tmp_dir.exists():
-        npz_file = first_glob_match(
-            cnmf_tmp_dir,
-            [
-                f'{name}.gene_spectra_tpm.k_{k}.dt_0_1.df.npz',
-                f'{name}.gene_spectra_tpm.k_{k}.dt_0.1.df.npz',
-                f'{name}.gene_spectra_tpm.k_{k}.dt_*.df.npz',
-                f'{name}.gene_spectra_tpm.k_{k}.*.df.npz',
-            ],
-        )
-        if npz_file is not None:
-            return npz_file
-
-    return first_glob_match(
-        cnmf_run_dir,
-        [
-            f'{name}.gene_spectra_tpm.k_{k}.dt_0_1.txt',
-            f'{name}.gene_spectra_tpm.k_{k}.dt_0.1.txt',
-            f'{name}.gene_spectra_tpm.k_{k}.dt_*.txt',
-            f'{name}.gene_spectra_tpm.k_{k}.*.txt',
-        ],
-    )
-
-
-def load_gep_tpm_dataframe(
-    cnmf_run_dir : Path,
-    name         : str,
-    k            : int,
-) -> Optional[pd.DataFrame]:
-    """Load the non-negative gene_spectra_tpm matrix as GEP x gene DataFrame."""
-    spectra_file = find_gep_tpm_file(cnmf_run_dir, name, k)
-    if spectra_file is None or not spectra_file.exists():
-        logger.warning(f"  [WARN] gene_spectra_tpm file not found (K={k})")
-        return None
-
-    try:
-        if spectra_file.suffix == '.npz':
-            df = load_dataframe_npz(spectra_file)
-        else:
-            df = pd.read_csv(spectra_file, sep='\t', index_col=0)
-        if df is None:
-            return None
-
-        if df.shape[0] == k:
-            gep_df = df.copy()
-        elif df.shape[1] == k:
-            gep_df = df.T.copy()
-        else:
-            raise ValueError(
-                f"gene_spectra_tpm shape {df.shape} is inconsistent with K={k}."
-            )
-
-        gep_df = gep_df.apply(pd.to_numeric, errors='coerce').fillna(0.0)
-        gep_df.index = [f'GEP_{i+1}' for i in range(k)]
-        gep_df.columns = [str(col) for col in gep_df.columns]
-
-        if not usage_dataframe_has_signal(gep_df):
-            logger.warning(f"  [WARN] gene_spectra_tpm matrix has no signal (K={k})")
-            return None
-
-        logger.info(f"  [OK] gene_spectra_tpm loaded: {gep_df.shape}")
-        return gep_df
-    except Exception as e:
-        logger.warning(f"  [WARN] Failed to load gene_spectra_tpm: {e}")
-        return None
-
-
-def find_tpm_h5ad_file(
-    cnmf_run_dir : Path,
-    name         : str,
-) -> Optional[Path]:
-    """Locate the TP10K / TPM h5ad needed for reconstructing usage."""
-    cnmf_tmp_dir = cnmf_run_dir / 'cnmf_tmp'
-    if cnmf_tmp_dir.exists():
-        tpm_file = first_glob_match(
-            cnmf_tmp_dir,
-            [
-                f'{name}.tpm.h5ad',
-                f'{name}.tp10k.h5ad',
-                '*.tpm.h5ad',
-                '*.tp10k.h5ad',
-            ],
-        )
-        if tpm_file is not None:
-            return tpm_file
-
-    source_dir = cnmf_run_dir.parent.parent
-    return first_glob_match(
-        source_dir,
-        [
-            'cnmf_input_tp10k.h5ad',
-            '*.tpm.h5ad',
-            '*.tp10k.h5ad',
-        ],
-    )
-
-
-def reconstruct_usage_matrix_from_tpm(
-    cnmf_run_dir : Path,
-    name         : str,
-    k            : int,
-    chunk_size   : int = 2000,
-) -> Optional[pd.DataFrame]:
-    """
-    Reconstruct per-cell usage when cNMF's exported usage matrices are blank.
-
-    Strategy:
-      1. load non-negative gene_spectra_tpm (GEP x gene)
-      2. load per-cell TPM/TP10K matrix from h5ad
-      3. solve X ~= U @ spectra in chunks via least squares
-      4. clip negatives to zero, row-normalize, and cache the result
-    """
-    spectra_df = load_gep_tpm_dataframe(cnmf_run_dir, name, k)
-    if spectra_df is None:
-        return None
-
-    tpm_file = find_tpm_h5ad_file(cnmf_run_dir, name)
-    if tpm_file is None or not tpm_file.exists():
-        logger.warning(f"  [WARN] TPM h5ad not found for usage reconstruction (K={k})")
-        return None
-
-    adata = None
-    try:
-        logger.info(f"  Reconstructing usage from TPM: {tpm_file.name}")
-        adata = sc.read_h5ad(tpm_file, backed='r')
-        var_index = pd.Index(adata.var_names.astype(str))
-        common_genes = [gene for gene in spectra_df.columns if gene in var_index]
-        if len(common_genes) < max(3, k):
-            logger.warning(
-                f"  [WARN] Too few overlapping genes for usage reconstruction: {len(common_genes)}"
-            )
-            return None
-
-        gene_idx = var_index.get_indexer(common_genes)
-        spectra = np.asarray(spectra_df.loc[:, common_genes].values, dtype=float)
-        design = spectra.T
-        usage_chunks: List[np.ndarray] = []
-
-        for start in range(0, adata.n_obs, chunk_size):
-            stop = min(start + chunk_size, adata.n_obs)
-            x_chunk = adata[start:stop, gene_idx].X
-            if sp.issparse(x_chunk) or hasattr(x_chunk, 'toarray'):
-                x_chunk = x_chunk.toarray()
-            x_chunk = np.asarray(x_chunk, dtype=float)
-
-            coef_t, *_ = np.linalg.lstsq(design, x_chunk.T, rcond=None)
-            chunk = np.clip(coef_t.T, a_min=0.0, a_max=None)
-
-            row_sums = chunk.sum(axis=1, keepdims=True)
-            positive = row_sums[:, 0] > 0
-            if positive.any():
-                chunk[positive] = chunk[positive] / row_sums[positive]
-
-            if (~positive).any():
-                zero_idx = np.where(~positive)[0]
-                sims = np.clip(x_chunk[zero_idx] @ spectra.T, a_min=0.0, a_max=None)
-                sims_sums = sims.sum(axis=1, keepdims=True)
-                nz = sims_sums[:, 0] > 0
-                if nz.any():
-                    chunk[zero_idx[nz]] = sims[nz] / sims_sums[nz]
-
-            usage_chunks.append(chunk.astype(np.float32))
-
-        usage_df = pd.DataFrame(
-            np.vstack(usage_chunks),
-            index=[str(x) for x in adata.obs_names],
-            columns=list(spectra_df.index),
-        )
-        usage_df = normalize_gep_column_names(usage_df)
-
-        if not usage_dataframe_has_signal(usage_df):
-            logger.warning(f"  [WARN] Reconstructed usage still has no usable signal (K={k})")
-            return None
-
-        logger.info(f"  [OK] Reconstructed usage matrix: {usage_df.shape}")
-        return usage_df
-    except Exception as e:
-        logger.warning(f"  [WARN] Usage reconstruction failed: {e}")
-        return None
-    finally:
-        try:
-            if adata is not None and getattr(adata, 'isbacked', False):
-                adata.file.close()
-        except Exception:
-            pass
-
-
 def load_usage_matrix(
     cnmf_run_dir : Path,
     name         : str,
@@ -1086,76 +802,20 @@ def load_usage_matrix(
         ],
     )
 
-    cnmf_tmp_dir = cnmf_run_dir / 'cnmf_tmp'
-    usage_npz_file = None
-    reconstructed_npz_file = None
-    if cnmf_tmp_dir.exists():
-        usage_npz_file = first_glob_match(
-            cnmf_tmp_dir,
-            [
-                f'{name}.usages.k_{k}.dt_0_1.consensus.df.npz',
-                f'{name}.usages.k_{k}.dt_0.1.consensus.df.npz',
-                f'{name}.usages.k_{k}.dt_*.consensus.df.npz',
-                f'{name}.usages.k_{k}.*consensus.df.npz',
-            ],
-        )
-        reconstructed_npz_file = cnmf_tmp_dir / f'{name}.usages.k_{k}.reconstructed.df.npz'
+    if usage_file is None or not usage_file.exists():
+        logger.warning(f"  [WARN] Usage file not found (K={k})")
+        return None
 
-    txt_df: Optional[pd.DataFrame] = None
-    txt_invalid = False
-    if usage_file is not None and usage_file.exists():
-        logger.info(f"  Loading usage: {usage_file.name}")
-        try:
-            raw_df = pd.read_csv(usage_file, sep='\t', index_col=0)
-            txt_invalid = raw_df.empty or raw_df.isna().all().all()
-            txt_df = raw_df.apply(pd.to_numeric, errors='coerce').fillna(0.0)
-            txt_df = normalize_gep_column_names(txt_df)
-            if not txt_invalid and usage_dataframe_has_signal(txt_df):
-                logger.info(f"  [OK] Usage matrix loaded from txt: {txt_df.shape}")
-                return txt_df
-            logger.warning(
-                f"  [WARN] Usage txt appears empty/trivial for K={k}; trying npz fallback"
-            )
-        except Exception as e:
-            logger.warning(f"  [WARN] Failed to load usage txt: {e}")
+    logger.info(f"  Loading usage: {usage_file.name}")
 
-    if usage_npz_file is not None and usage_npz_file.exists():
-        logger.info(f"  Loading usage npz fallback: {usage_npz_file.name}")
-        df = load_dataframe_npz(usage_npz_file)
-        if df is not None:
-            df = df.apply(pd.to_numeric, errors='coerce').fillna(0.0)
-            df = normalize_gep_column_names(df)
-            if usage_dataframe_has_signal(df):
-                logger.info(f"  [OK] Usage matrix loaded from npz: {df.shape}")
-                return df
-            logger.warning(f"  [WARN] Usage npz also appears empty/trivial for K={k}")
-
-    if reconstructed_npz_file is not None and reconstructed_npz_file.exists():
-        logger.info(f"  Loading reconstructed usage cache: {reconstructed_npz_file.name}")
-        df = load_dataframe_npz(reconstructed_npz_file)
-        if df is not None:
-            df = df.apply(pd.to_numeric, errors='coerce').fillna(0.0)
-            df = normalize_gep_column_names(df)
-            if usage_dataframe_has_signal(df):
-                logger.info(f"  [OK] Usage matrix loaded from reconstruction cache: {df.shape}")
-                return df
-
-    reconstructed_df = reconstruct_usage_matrix_from_tpm(cnmf_run_dir, name, k)
-    if reconstructed_df is not None:
-        if reconstructed_npz_file is not None:
-            try:
-                save_dataframe_npz(reconstructed_df, reconstructed_npz_file)
-                logger.info(f"  [OK] Cached reconstructed usage: {reconstructed_npz_file.name}")
-            except Exception as e:
-                logger.warning(f"  [WARN] Failed to cache reconstructed usage: {e}")
-        return reconstructed_df
-
-    if txt_df is not None:
-        logger.warning(f"  [WARN] Falling back to txt-derived usage despite invalid/trivial values (K={k})")
-        return txt_df
-
-    logger.warning(f"  [WARN] Usage file not found (K={k})")
-    return None
+    try:
+        df = pd.read_csv(usage_file, sep='\t', index_col=0)
+        df = df.apply(pd.to_numeric, errors='coerce').fillna(0.0)
+        logger.info(f"  [OK] Usage matrix loaded: {df.shape}")
+        return df
+    except Exception as e:
+        logger.warning(f"  [WARN] Failed to load usage: {e}")
+        return None
 
 
 def load_top_genes(
@@ -1727,10 +1387,8 @@ def plot_gep_usage_heatmap(
     viz_config      : Optional[Dict] = None,
 ) -> bool:
     """
-    Heatmap of per-cell GEP usage (rows = cells, cols = GEPs).
-
-    Cells are grouped by the requested cell type column, with one row per cell.
-    The plotted row order is also exported as a sidecar TSV for downstream tracing.
+    Heatmap of mean GEP usage per cell type (rows = cell types, cols = GEPs).
+    Both axes are hierarchically clustered.
     """
     cfg = {**DEFAULT_VIZ_CONFIG, **(viz_config or {})}
     logger.info(f"  GEP usage heatmap (K={k})...")
@@ -1751,40 +1409,13 @@ def plot_gep_usage_heatmap(
             return False
 
         usage_aligned = usage_df.loc[common].copy()
-        ct_labels = (
-            adata.obs.loc[common, celltype_col]
-            .astype(str)
-            .replace({'nan': 'NA', 'None': 'NA'})
-            .fillna('NA')
-        )
+        ct_labels     = adata.obs.loc[common, celltype_col].astype(str)
+        usage_aligned['_celltype'] = ct_labels.values
 
-        row_meta = pd.DataFrame(
-            {
-                'cell': usage_aligned.index.astype(str),
-                'cell_type': ct_labels.values,
-                'dominant_gep': usage_aligned.idxmax(axis=1).astype(str).values,
-                'dominant_usage': usage_aligned.max(axis=1).astype(float).values,
-            },
-            index=usage_aligned.index,
-        )
-        for hierarchy_col in ('cell_type_L2', 'cell_type_L3'):
-            if hierarchy_col in adata.obs.columns:
-                row_meta[hierarchy_col] = (
-                    adata.obs.loc[common, hierarchy_col]
-                    .astype(str)
-                    .replace({'nan': 'NA', 'None': 'NA'})
-                    .fillna('NA')
-                    .values
-                )
+        mean_mat = usage_aligned.groupby('_celltype').mean()
+        mean_mat = mean_mat.fillna(0.0)
 
-        row_meta = row_meta.sort_values(
-            ['cell_type', 'dominant_gep', 'dominant_usage', 'cell'],
-            ascending=[True, True, False, True],
-            kind='stable',
-        )
-        usage_aligned = usage_aligned.loc[row_meta.index]
-
-        n_rows, n_cols = usage_aligned.shape
+        n_rows, n_cols = mean_mat.shape
         if n_rows == 0 or n_cols == 0:
             return False
 
@@ -1797,55 +1428,32 @@ def plot_gep_usage_heatmap(
             except Exception:
                 return list(range(mat.shape[0]))
 
-        col_ord = _hclust_order(usage_aligned.values.T)
-        ordered = usage_aligned.iloc[:, col_ord]
-        ordered_meta = row_meta.loc[ordered.index].copy()
-        ordered_meta.insert(0, 'row_index', np.arange(1, len(ordered_meta) + 1, dtype=int))
-        ordered_meta.to_csv(viz_dir / f'gep_usage_heatmap_k{k}_cell_order.tsv', sep='\t', index=False)
+        row_ord = _hclust_order(mean_mat.values)
+        col_ord = _hclust_order(mean_mat.values.T)
+        ordered = mean_mat.iloc[row_ord, col_ord]
 
-        fig_width = max(10.0, n_cols * 0.8)
-        fig_height = min(24.0, max(6.0, n_rows * 0.02))
-        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+        csv_out = viz_dir / f'gep_usage_mean_by_celltype_k{k}.csv'
+        ordered.to_csv(csv_out)
+
+        fig, ax = plt.subplots(figsize=(max(12, n_cols * 0.6), max(4, n_rows * 0.4)))
         im = ax.imshow(ordered.values, cmap='RdYlBu_r', aspect='auto', interpolation='nearest')
 
         ax.set_xticks(range(n_cols))
+        ax.set_yticks(range(n_rows))
         ax.set_xticklabels(ordered.columns, rotation=90, fontsize=9)
-        celltypes_ordered = ordered_meta['cell_type'].astype(str).tolist()
-        boundaries = [
-            idx for idx in range(1, n_rows)
-            if celltypes_ordered[idx] != celltypes_ordered[idx - 1]
-        ]
-        for boundary in boundaries:
-            ax.axhline(boundary - 0.5, color='white', linewidth=0.6, alpha=0.8)
-
-        unique_groups = []
-        y_ticks = []
-        start = 0
-        while start < n_rows:
-            end = start + 1
-            while end < n_rows and celltypes_ordered[end] == celltypes_ordered[start]:
-                end += 1
-            unique_groups.append(celltypes_ordered[start])
-            y_ticks.append((start + end - 1) / 2.0)
-            start = end
-        if len(unique_groups) <= 40:
-            ax.set_yticks(y_ticks)
-            ax.set_yticklabels(unique_groups, fontsize=8)
-        else:
-            ax.set_yticks([])
-
+        ax.set_yticklabels(ordered.index, fontsize=9)
         ax.set_xlabel('GEP', fontsize=11)
-        ax.set_ylabel('Cells', fontsize=11)
-        ax.set_title(f'Per-cell GEP Usage Heatmap (K={k})', fontsize=12, weight='bold')
+        ax.set_ylabel('Cell Type', fontsize=11)
+        ax.set_title(f'Mean GEP Usage by Cell Type (K={k})', fontsize=12, weight='bold')
 
         cb = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cb.set_label('Usage', rotation=270, labelpad=20, fontsize=10)
+        cb.set_label('Mean Usage', rotation=270, labelpad=20, fontsize=10)
 
         plt.tight_layout()
         out = viz_dir / f'gep_usage_heatmap_k{k}.{cfg["figure_format"]}'
         plt.savefig(out, dpi=cfg['dpi'], bbox_inches='tight')
         plt.close()
-        logger.info(f"    [OK] {out.name}")
+        logger.info(f"    [OK] {out.name}; {csv_out.name}")
         return True
 
     except Exception as e:
@@ -1934,117 +1542,6 @@ def plot_umap_gep_usage(
     return True
 
 
-def plot_gep_gene_pattern_heatmap(
-    cnmf_output_dir : Path,
-    name            : str,
-    k               : int,
-    viz_dir         : Path,
-    n_top           : int = 20,
-    gene_exclusion_config: Optional[Dict[str, Any]] = None,
-    lineage_context : str = '',
-    viz_config      : Optional[Dict] = None,
-) -> bool:
-    """Heatmap of top gene weights for each cNMF GEP."""
-    cfg = {**DEFAULT_VIZ_CONFIG, **(viz_config or {})}
-    logger.info(f"  GEP top-gene pattern heatmap (K={k})...")
-    try:
-        cnmf_run_dir = cnmf_output_dir / name
-        top_df = extract_top_genes_with_scores_per_gep(
-            cnmf_run_dir,
-            name,
-            k,
-            n_top=n_top,
-            gene_exclusion_config=gene_exclusion_config,
-            lineage_context=lineage_context,
-        )
-        if top_df is None or top_df.empty:
-            return False
-        genes = list(dict.fromkeys(top_df['gene'].astype(str).tolist()))
-        mat = top_df.pivot_table(index='gene', columns='gep', values='score', aggfunc='max').reindex(genes).fillna(0.0)
-        if mat.empty:
-            return False
-        fig_h = max(5.0, min(22.0, 0.18 * mat.shape[0] + 2.5))
-        fig_w = max(7.0, 0.7 * mat.shape[1] + 3.0)
-        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-        im = ax.imshow(mat.values, aspect='auto', cmap='viridis')
-        ax.set_xticks(range(mat.shape[1]))
-        ax.set_xticklabels(mat.columns, rotation=45, ha='right', fontsize=9)
-        ax.set_yticks(range(mat.shape[0]))
-        ax.set_yticklabels(mat.index, fontsize=6)
-        ax.set_xlabel('GEP')
-        ax.set_ylabel('Top genes')
-        ax.set_title(f'cNMF GEP top-gene weights (K={k}, top {n_top}/GEP)', fontsize=12, weight='bold')
-        cb = plt.colorbar(im, ax=ax, fraction=0.025, pad=0.02)
-        cb.set_label('Spectra score', rotation=270, labelpad=18)
-        plt.tight_layout()
-        out = viz_dir / f'gep_gene_pattern_heatmap_k{k}.{cfg["figure_format"]}'
-        plt.savefig(out, dpi=cfg['dpi'], bbox_inches='tight')
-        plt.close()
-        logger.info(f"    [OK] {out.name}")
-        return True
-    except Exception as e:
-        logger.warning(f"  [WARN] GEP top-gene heatmap failed (K={k}): {e}")
-        plt.close('all')
-        return False
-
-
-def plot_gep_top_gene_barplots(
-    cnmf_output_dir : Path,
-    name            : str,
-    k               : int,
-    viz_dir         : Path,
-    n_top           : int = 10,
-    max_geps        : int = 12,
-    gene_exclusion_config: Optional[Dict[str, Any]] = None,
-    lineage_context : str = '',
-    viz_config      : Optional[Dict] = None,
-) -> bool:
-    """Small-multiple barplots of top genes per GEP for LLM/human review."""
-    cfg = {**DEFAULT_VIZ_CONFIG, **(viz_config or {})}
-    logger.info(f"  GEP top-gene barplots (K={k})...")
-    try:
-        cnmf_run_dir = cnmf_output_dir / name
-        top_df = extract_top_genes_with_scores_per_gep(
-            cnmf_run_dir,
-            name,
-            k,
-            n_top=n_top,
-            gene_exclusion_config=gene_exclusion_config,
-            lineage_context=lineage_context,
-        )
-        if top_df is None or top_df.empty:
-            return False
-        geps = list(dict.fromkeys(top_df['gep'].astype(str).tolist()))[:max_geps]
-        n_show = len(geps)
-        if n_show == 0:
-            return False
-        ncols = min(4, n_show)
-        nrows = int(np.ceil(n_show / ncols))
-        fig, axes = plt.subplots(nrows, ncols, figsize=(4.5 * ncols, 3.8 * nrows))
-        axes_flat = np.array(axes).flatten() if nrows * ncols > 1 else np.array([axes])
-        for i, gep in enumerate(geps):
-            ax = axes_flat[i]
-            sub = top_df[top_df['gep'].astype(str) == gep].sort_values('score', ascending=True).tail(n_top)
-            ax.barh(sub['gene'].astype(str), sub['score'].astype(float), color='#4C78A8')
-            ax.set_title(gep, fontsize=10, weight='bold')
-            ax.tick_params(axis='y', labelsize=7)
-            ax.tick_params(axis='x', labelsize=7)
-            ax.set_xlabel('Score', fontsize=8)
-        for j in range(n_show, len(axes_flat)):
-            axes_flat[j].set_visible(False)
-        fig.suptitle(f'cNMF top genes per GEP (K={k})', fontsize=13, weight='bold')
-        plt.tight_layout()
-        out = viz_dir / f'gep_top_gene_barplots_k{k}.{cfg["figure_format"]}'
-        plt.savefig(out, dpi=cfg['dpi'], bbox_inches='tight')
-        plt.close()
-        logger.info(f"    [OK] {out.name}")
-        return True
-    except Exception as e:
-        logger.warning(f"  [WARN] GEP top-gene barplots failed (K={k}): {e}")
-        plt.close('all')
-        return False
-
-
 def generate_all_visualizations(
     cnmf_output_dir : Path,
     name            : str,
@@ -2052,17 +1549,13 @@ def generate_all_visualizations(
     adata           : sc.AnnData,
     celltype_col    : Optional[str],
     output_dir      : Path,
-    gene_exclusion_config: Optional[Dict[str, Any]] = None,
-    lineage_context : str = '',
     viz_config      : Optional[Dict] = None,
 ) -> Dict[int, Dict[str, bool]]:
     """
-        Generate standard visualizations for each K:
+    Generate all three standard visualizations for each K:
       - local_density histogram
       - GEP clustergram
       - GEP usage heatmap by cell type
-            - GEP top-gene pattern heatmap
-            - GEP top-gene barplots
 
     Returns nested dict: {k: {plot_name: True/False}}
     """
@@ -2089,36 +1582,15 @@ def generate_all_visualizations(
         kr['usage_heatmap'] = plot_gep_usage_heatmap(
             cnmf_output_dir, name, k, adata, celltype_col, viz_dir, viz_config)
 
-        kr['gene_pattern_heatmap'] = plot_gep_gene_pattern_heatmap(
-            cnmf_output_dir,
-            name,
-            k,
-            viz_dir,
-            n_top=20,
-            gene_exclusion_config=gene_exclusion_config,
-            lineage_context=lineage_context,
-            viz_config=viz_config)
-
-        kr['top_gene_barplots'] = plot_gep_top_gene_barplots(
-            cnmf_output_dir,
-            name,
-            k,
-            viz_dir,
-            n_top=10,
-            max_geps=12,
-            gene_exclusion_config=gene_exclusion_config,
-            lineage_context=lineage_context,
-            viz_config=viz_config)
-
         n_ok = sum(kr.values())
-        logger.info(f"  {n_ok}/{len(kr)} plots succeeded")
+        logger.info(f"  {n_ok}/3 plots succeeded")
 
         results[k] = kr
         plt.close('all')
         gc.collect()
 
     total_ok = sum(sum(v.values()) for v in results.values())
-    total    = sum(len(v) for v in results.values())
+    total    = len(k_range) * 3
     logger.info(f"\n[OK] Visualization summary: {total_ok}/{total} plots")
 
     return results
@@ -2297,8 +1769,6 @@ def run_cnmf_full(
         k_range         = k_range,
         output_dir      = output_dir,
         n_top           = 50,
-        gene_exclusion_config = cfg.get('gene_exclusion_config') or None,
-        lineage_context = result.get('gene_exclusion', {}).get('lineage_context', ''),
     )
     if gep_gene_tables:
         result['paths']['gep_gene_tables'] = gep_gene_tables
@@ -2311,8 +1781,6 @@ def run_cnmf_full(
         adata           = adata,
         celltype_col    = celltype_col,
         output_dir      = output_dir,
-        gene_exclusion_config = cfg.get('gene_exclusion_config') or None,
-        lineage_context = result.get('gene_exclusion', {}).get('lineage_context', ''),
         viz_config      = viz_config,
     )
     result['visualizations'] = viz_results
@@ -2340,8 +1808,6 @@ def extract_top_genes_per_gep(
     name         : str,
     k            : int,
     n_top        : int = 30,
-    gene_exclusion_config: Optional[Dict[str, Any]] = None,
-    lineage_context : str = '',
 ) -> Optional[pd.DataFrame]:
     """
     Return a DataFrame (n_top × k) where each column is a GEP and
@@ -2355,11 +1821,6 @@ def extract_top_genes_per_gep(
 
     records = {}
     for gep_name, scores in gep_df.iterrows():
-        scores = filter_scores_by_gene_exclusion(
-            scores,
-            gene_exclusion_config=gene_exclusion_config,
-            lineage_context=lineage_context,
-        )
         top_series = scores.sort_values(ascending=False).head(n_top)
         records[gep_name] = top_series.index.tolist()
 
@@ -2372,20 +1833,11 @@ def save_gep_gene_table(
     k            : int,
     output_dir   : Path,
     n_top        : int = 50,
-    gene_exclusion_config: Optional[Dict[str, Any]] = None,
-    lineage_context : str = '',
 ) -> Optional[Path]:
     """
     Save top genes per GEP to CSV: output_dir / gep_top_genes_k{k}.csv
     """
-    df = extract_top_genes_per_gep(
-        cnmf_run_dir,
-        name,
-        k,
-        n_top=n_top,
-        gene_exclusion_config=gene_exclusion_config,
-        lineage_context=lineage_context,
-    )
+    df = extract_top_genes_per_gep(cnmf_run_dir, name, k, n_top=n_top)
     if df is None:
         logger.warning(f"  [WARN] Cannot extract top genes (K={k})")
         return None
@@ -2401,8 +1853,6 @@ def extract_top_genes_with_scores_per_gep(
     name         : str,
     k            : int,
     n_top        : int = 30,
-    gene_exclusion_config: Optional[Dict[str, Any]] = None,
-    lineage_context : str = '',
 ) -> Optional[pd.DataFrame]:
     """
     Return a long-format DataFrame with ranked genes and spectra scores per GEP.
@@ -2415,11 +1865,6 @@ def extract_top_genes_with_scores_per_gep(
 
     rows: List[Dict[str, Any]] = []
     for gep_name, scores in gep_df.iterrows():
-        scores = filter_scores_by_gene_exclusion(
-            scores,
-            gene_exclusion_config=gene_exclusion_config,
-            lineage_context=lineage_context,
-        )
         top_series = scores.sort_values(ascending=False).head(n_top)
         for rank, (gene, score) in enumerate(top_series.items(), start=1):
             rows.append({
@@ -2439,21 +1884,12 @@ def save_gep_gene_score_table(
     k            : int,
     output_dir   : Path,
     n_top        : int = 50,
-    gene_exclusion_config: Optional[Dict[str, Any]] = None,
-    lineage_context : str = '',
 ) -> Optional[Path]:
     """
     Save long-format ranked genes with spectra scores to TSV:
     output_dir / gep_gene_scores_k{k}.tsv
     """
-    df = extract_top_genes_with_scores_per_gep(
-        cnmf_run_dir,
-        name,
-        k,
-        n_top=n_top,
-        gene_exclusion_config=gene_exclusion_config,
-        lineage_context=lineage_context,
-    )
+    df = extract_top_genes_with_scores_per_gep(cnmf_run_dir, name, k, n_top=n_top)
     if df is None:
         logger.warning(f"  [WARN] Cannot extract scored top genes (K={k})")
         return None
@@ -2470,8 +1906,6 @@ def export_gep_gene_tables(
     k_range         : List[int],
     output_dir      : Path,
     n_top           : int = 50,
-    gene_exclusion_config: Optional[Dict[str, Any]] = None,
-    lineage_context : str = '',
 ) -> Dict[str, Any]:
     """
     Export per-K GEP gene tables in both wide and long formats.
@@ -2497,8 +1931,6 @@ def export_gep_gene_tables(
             k=k,
             output_dir=gep_tables_dir,
             n_top=n_top,
-            gene_exclusion_config=gene_exclusion_config,
-            lineage_context=lineage_context,
         )
         if wide_path is not None:
             manifest['wide_by_k'][str(k)] = str(wide_path)
@@ -2509,8 +1941,6 @@ def export_gep_gene_tables(
             k=k,
             output_dir=gep_tables_dir,
             n_top=n_top,
-            gene_exclusion_config=gene_exclusion_config,
-            lineage_context=lineage_context,
         )
         if long_path is not None:
             manifest['long_by_k'][str(k)] = str(long_path)
@@ -2524,8 +1954,6 @@ def build_llm_gep_prompt(
     k            : int,
     n_top        : int = 30,
     context      : str = '',
-    gene_exclusion_config: Optional[Dict[str, Any]] = None,
-    lineage_context : str = '',
 ) -> str:
     """
     Build a structured LLM interpretation prompt for cNMF GEPs.
@@ -2536,14 +1964,7 @@ def build_llm_gep_prompt(
     ----------
     context : biological context string (e.g. 'B cell scRNA-seq, CRSwNP')
     """
-    top_df = extract_top_genes_per_gep(
-        cnmf_run_dir,
-        name,
-        k,
-        n_top=n_top,
-        gene_exclusion_config=gene_exclusion_config,
-        lineage_context=lineage_context or context,
-    )
+    top_df = extract_top_genes_per_gep(cnmf_run_dir, name, k, n_top=n_top)
     if top_df is None:
         return ''
 

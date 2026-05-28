@@ -16,7 +16,17 @@ SOURCE_COLUMN_MAP = {
     "scExtract": "cell_type_scextract",
     "celltypist_annotation": "cell_type_celltypist_scextract",
     "sctype_annotation": "cell_type_sctype_scextract",
+    "mllmcelltype_annotation": "cell_type_mllmcelltype_scextract",
 }
+
+
+SOURCE_CHOICES = [
+    "compare_only",
+    "scExtract",
+    "celltypist_annotation",
+    "sctype_annotation",
+    "mllmcelltype_annotation",
+]
 
 
 def ensure_dir(path: Path) -> Path:
@@ -66,8 +76,16 @@ def apply_bridge(
         "rare_type_reassigned": 0,
     }
 
-    adata.obs["annotation_source_selected"] = selected_label_source
-    adata.obs["annotation_label_selected"] = None
+    adata.obs["annotation_source_selected"] = pd.Series(
+        [selected_label_source] * adata.n_obs,
+        index=adata.obs_names,
+        dtype="string",
+    )
+    adata.obs["annotation_label_selected"] = pd.Series(
+        [pd.NA] * adata.n_obs,
+        index=adata.obs_names,
+        dtype="string",
+    )
 
     if selected_label_source == "compare_only":
         return summary
@@ -93,9 +111,21 @@ def apply_bridge(
     labels_cat = pd.Series(pd.Categorical(labels, categories=categories), index=adata.obs_names)
 
     adata.obs["labels_for_scanvi"] = labels_cat
-    adata.obs["annotation_source_selected"] = selected_label_source
-    adata.obs["annotation_label_selected"] = resolved_column
-    adata.obs["scanvi_label_source"] = selected_label_source
+    adata.obs["annotation_source_selected"] = pd.Series(
+        [selected_label_source] * adata.n_obs,
+        index=adata.obs_names,
+        dtype="string",
+    )
+    adata.obs["annotation_label_selected"] = pd.Series(
+        [resolved_column] * adata.n_obs,
+        index=adata.obs_names,
+        dtype="string",
+    )
+    adata.obs["scanvi_label_source"] = pd.Series(
+        [selected_label_source] * adata.n_obs,
+        index=adata.obs_names,
+        dtype="string",
+    )
 
     n_unknown = int((labels_cat.astype(str) == unknown_label).sum())
     n_labeled = int(adata.n_obs - n_unknown)
@@ -120,7 +150,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Bridge selected scExtract annotations to downstream labels_for_scanvi.")
     parser.add_argument("--input-h5ad", required=True)
     parser.add_argument("--output-h5ad", required=True)
-    parser.add_argument("--selected-label-source", required=True, choices=["compare_only", "scExtract", "celltypist_annotation", "sctype_annotation"])
+    parser.add_argument("--selected-label-source", required=True, choices=SOURCE_CHOICES)
     parser.add_argument("--source-column", default=None)
     parser.add_argument("--unknown-label", default="Unknown")
     parser.add_argument("--min-cells-per-type", type=int, default=10)

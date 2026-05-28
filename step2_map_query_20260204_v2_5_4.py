@@ -60,6 +60,52 @@ def _env_path(name: str, default: str) -> str:
         return default
     return value.strip()
 
+
+def _compute_umap_from_latent(adata: sc.AnnData, latent_key: str, *, context: str) -> None:
+    if latent_key not in adata.obsm:
+        raise KeyError(f"Missing latent key for {context} UMAP fallback: {latent_key}")
+    if adata.n_obs < 3:
+        raise ValueError(f"Need at least 3 cells to compute fallback UMAP for {context}, got {adata.n_obs}")
+
+    n_neighbors = min(30, adata.n_obs - 1)
+    for key in ["neighbors", "umap"]:
+        adata.uns.pop(key, None)
+    for key in ["distances", "connectivities"]:
+        if key in adata.obsp:
+            del adata.obsp[key]
+
+    sc.pp.neighbors(adata, use_rep=latent_key, n_neighbors=n_neighbors)
+    sc.tl.umap(adata, random_state=42)
+    print(f"OK Recomputed fallback {context} UMAP from {latent_key} (n_neighbors={n_neighbors})")
+
+
+def _load_umap_operator_compat(path: Path):
+    try:
+        return joblib.load(path)
+    except Exception as e_first:
+        first_msg = str(e_first)
+        try:
+            import numpy.random._pickle as np_random_pickle
+
+            original_ctor = np_random_pickle.__bit_generator_ctor
+
+            def _patched_bit_generator_ctor(bit_generator_name="MT19937"):
+                if isinstance(bit_generator_name, type):
+                    bit_generator_name = bit_generator_name.__name__
+                return original_ctor(bit_generator_name)
+
+            np_random_pickle.__bit_generator_ctor = _patched_bit_generator_ctor
+            try:
+                return joblib.load(path)
+            finally:
+                np_random_pickle.__bit_generator_ctor = original_ctor
+        except Exception as e_second:
+            second_msg = str(e_second)
+            raise RuntimeError(
+                "Failed to load legacy UMAP operator after compatibility retry. "
+                f"First error: {first_msg} | Retry error: {second_msg}"
+            ) from e_second
+
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
@@ -429,9 +475,18 @@ umap_operator_file = Path(SCANVI_MODEL_DIR).parent / "umap_operator.joblib"
 if not umap_operator_file.exists():
     raise FileNotFoundError(f"UMAP operator not found: {umap_operator_file}")
 
-umap_operator = joblib.load(umap_operator_file)
-adata_query.obsm["X_umap"] = umap_operator.transform(adata_query.obsm["X_scANVI_L2"])
-print(f"OK X_umap: {adata_query.obsm['X_umap'].shape}")
+same_space_umap = True
+try:
+    umap_operator = _load_umap_operator_compat(umap_operator_file)
+    adata_query.obsm["X_umap"] = umap_operator.transform(adata_query.obsm["X_scANVI_L2"])
+    print(f"OK X_umap: {adata_query.obsm['X_umap'].shape}")
+    adata_query.uns["umap_projection_mode"] = "saved_operator_transform"
+except Exception as e:
+    same_space_umap = False
+    print(f"WARNING  Failed to load/apply saved UMAP operator: {e}")
+    print("WARNING  Falling back to de novo query-only UMAP; merged UMAP will be recomputed after merge")
+    _compute_umap_from_latent(adata_query, "X_scANVI_L2", context="query")
+    adata_query.uns["umap_projection_mode"] = "query_only_fallback_from_latent"
 
 # ==============================================================================
 # Step 12: Restore original query metadata (FULL FIX: FORCE OVERWRITE always)
@@ -522,6 +577,34 @@ if REF_H5AD_FOR_MERGE:
     adata_ref_m = adata_ref[:, common].copy()
     adata_qry_m = adata_query[:, common].copy()
 
+    # Ensure downstream merge keeps both reference truth and query mapping columns.
+    # AnnData concat may effectively drop columns that are absent on one side, so we
+    # materialize the shared schema explicitly before concatenation.
+    for col in [L2_KEY, "Cell_Type_L2_pred", "Cell_Type_L2_final"]:
+        if col in adata_ref_m.obs.columns:
+            adata_ref_m.obs[col] = adata_ref_m.obs[col].astype("object")
+        else:
+            adata_ref_m.obs[col] = pd.Series(pd.NA, index=adata_ref_m.obs_names, dtype="object")
+
+        if col in adata_qry_m.obs.columns:
+            adata_qry_m.obs[col] = adata_qry_m.obs[col].astype("object")
+        else:
+            adata_qry_m.obs[col] = pd.Series(pd.NA, index=adata_qry_m.obs_names, dtype="object")
+
+    if "mapping_confidence" in adata_ref_m.obs.columns:
+        adata_ref_m.obs["mapping_confidence"] = pd.to_numeric(
+            adata_ref_m.obs["mapping_confidence"], errors="coerce"
+        )
+    else:
+        adata_ref_m.obs["mapping_confidence"] = np.nan
+
+    if "mapping_confidence" in adata_qry_m.obs.columns:
+        adata_qry_m.obs["mapping_confidence"] = pd.to_numeric(
+            adata_qry_m.obs["mapping_confidence"], errors="coerce"
+        )
+    else:
+        adata_qry_m.obs["mapping_confidence"] = np.nan
+
     # keep minimal obsm
     for ad in (adata_ref_m, adata_qry_m):
         for k in list(ad.obsm.keys()):
@@ -541,6 +624,11 @@ if REF_H5AD_FOR_MERGE:
         merge="unique",
         label="data_source",
     )
+
+    if not same_space_umap:
+        print("Recomputing merged shared UMAP from X_scANVI_L2 (saved operator unavailable)")
+        _compute_umap_from_latent(adata_all, "X_scANVI_L2", context="merged")
+        adata_all.uns["umap_projection_mode"] = "merged_fallback_from_latent"
 
     if "X_umap" not in adata_all.obsm or adata_all.obsm["X_umap"].shape[0] != adata_all.n_obs:
         raise RuntimeError("UMAP lost/misaligned during merge.")

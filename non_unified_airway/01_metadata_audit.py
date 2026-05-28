@@ -24,8 +24,10 @@ from non_unified_airway.common import (
     build_sample_manifest,
     choose_first_existing_path,
     inspect_h5ad_light,
+    rank_allcells_candidate_summaries,
     read_obs_columns_h5py,
     recommend_model_formulas,
+    summarize_allcells_candidates,
     write_json,
     write_tsv,
 )
@@ -48,9 +50,23 @@ def load_config_manifest(config_manifest: Path) -> dict[str, Any]:
     return json.loads(config_manifest.read_text(encoding="utf-8"))
 
 
-def pick_primary_h5ad(config: dict[str, Any], override_h5ad: Path | None) -> Path:
+def resolve_candidate_audit(config: dict[str, Any], override_h5ad: Path | None) -> pd.DataFrame:
     if override_h5ad is not None:
-        return override_h5ad
+        return summarize_allcells_candidates([override_h5ad])
+    audit_records = config.get("allcells_reference_candidate_audit", [])
+    if audit_records:
+        return rank_allcells_candidate_summaries(audit_records)
+    return summarize_allcells_candidates(config.get("allcells_reference_candidates", []))
+
+
+def pick_primary_h5ad(config: dict[str, Any], override_h5ad: Path | None) -> tuple[Path, pd.DataFrame]:
+    candidate_audit_df = resolve_candidate_audit(config, override_h5ad)
+    if override_h5ad is not None:
+        return override_h5ad, candidate_audit_df
+    if not candidate_audit_df.empty:
+        selected_rows = candidate_audit_df.loc[candidate_audit_df["selected"]]
+        if not selected_rows.empty:
+            return Path(selected_rows.iloc[0]["path"]), candidate_audit_df
     candidates = config.get("allcells_reference_candidates", [])
     selected = choose_first_existing_path(candidates)
     if selected is None:
@@ -58,7 +74,7 @@ def pick_primary_h5ad(config: dict[str, Any], override_h5ad: Path | None) -> Pat
             "No existing all-cells reference candidate found in config manifest. "
             "Run 00_config_non_unified_airway.py or pass --h5ad explicitly."
         )
-    return selected
+    return selected, candidate_audit_df
 
 
 def build_crosstab(sample_manifest: pd.DataFrame, row_col: str, col_col: str, value_col: str = "sample") -> pd.DataFrame:
@@ -74,18 +90,32 @@ def build_crosstab(sample_manifest: pd.DataFrame, row_col: str, col_col: str, va
     return table
 
 
-def run_metadata_audit(h5ad_path: Path, out_dir: Path, config_manifest: Path | None = None) -> dict[str, Any]:
+def run_metadata_audit(
+    h5ad_path: Path,
+    out_dir: Path,
+    config_manifest: Path | None = None,
+    candidate_audit_df: pd.DataFrame | None = None,
+) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     h5ad_info = inspect_h5ad_light(h5ad_path)
     metadata = read_obs_columns_h5py(h5ad_path, AUDIT_OBS_COLUMNS)
     annotated = add_canonical_fields(metadata)
     sample_manifest = build_sample_manifest(annotated)
+    healthy_manifest = sample_manifest.loc[sample_manifest["disease_group"] == "healthy"].copy()
     site_by_dataset = build_crosstab(sample_manifest, "site_group", "dataset")
     site_by_disease = build_crosstab(sample_manifest, "site_group", "disease_group")
     compartment_by_dataset = build_crosstab(sample_manifest, "analysis_compartment", "dataset")
+    healthy_site_by_dataset = build_crosstab(healthy_manifest, "site_group", "dataset")
     recommended_formulas = recommend_model_formulas(sample_manifest)
     recommended_contrasts = build_recommended_contrasts(sample_manifest)
+    healthy_site_summary = (
+        healthy_manifest.groupby(["site_group", "analysis_compartment"], dropna=False)
+        .agg(n_samples=("sample", "nunique"), n_cells=("n_cells", "sum"))
+        .reset_index()
+        .sort_values(["site_group", "analysis_compartment"])
+        .reset_index(drop=True)
+    )
 
     present_obs = pd.DataFrame({"obs_column": sorted(metadata.columns.tolist())})
     write_tsv(out_dir / "obs_columns_present.tsv", present_obs)
@@ -94,8 +124,18 @@ def run_metadata_audit(h5ad_path: Path, out_dir: Path, config_manifest: Path | N
     write_tsv(out_dir / "site_by_dataset.tsv", site_by_dataset)
     write_tsv(out_dir / "site_by_disease.tsv", site_by_disease)
     write_tsv(out_dir / "analysis_compartment_by_dataset.tsv", compartment_by_dataset)
+    write_tsv(out_dir / "healthy_site_by_dataset.tsv", healthy_site_by_dataset)
+    write_tsv(out_dir / "healthy_site_summary.tsv", healthy_site_summary)
     write_tsv(out_dir / "recommended_contrasts.tsv", recommended_contrasts)
     write_json(out_dir / "recommended_model_formulas.json", recommended_formulas)
+    if candidate_audit_df is not None and not candidate_audit_df.empty:
+        write_tsv(out_dir / "allcells_candidate_audit.tsv", candidate_audit_df)
+
+    selected_candidate_row = None
+    if candidate_audit_df is not None and not candidate_audit_df.empty:
+        selected_rows = candidate_audit_df.loc[candidate_audit_df["selected"]]
+        if not selected_rows.empty:
+            selected_candidate_row = selected_rows.iloc[0].to_dict()
 
     summary = {
         "h5ad": h5ad_info,
@@ -105,6 +145,10 @@ def run_metadata_audit(h5ad_path: Path, out_dir: Path, config_manifest: Path | N
         "n_site_groups": int(sample_manifest["site_group"].nunique()) if "site_group" in sample_manifest.columns else 0,
         "n_disease_groups": int(sample_manifest["disease_group"].nunique()) if "disease_group" in sample_manifest.columns else 0,
         "n_datasets": int(sample_manifest["dataset"].nunique()) if "dataset" in sample_manifest.columns else 0,
+        "n_healthy_samples": int(healthy_manifest["sample"].nunique()) if "sample" in healthy_manifest.columns else 0,
+        "n_healthy_site_groups": int(healthy_manifest["site_group"].nunique()) if "site_group" in healthy_manifest.columns else 0,
+        "healthy_site_groups": sorted(set(healthy_manifest.get("site_group", pd.Series(dtype=str)).dropna().astype(str)) - {"unknown", "", "nan"}),
+        "selected_candidate": selected_candidate_row,
         "recommended_model_formulas": recommended_formulas,
     }
     write_json(out_dir / "preflight_summary.json", summary)
@@ -114,11 +158,12 @@ def run_metadata_audit(h5ad_path: Path, out_dir: Path, config_manifest: Path | N
 def main() -> int:
     args = parse_args()
     config = load_config_manifest(args.config_manifest)
-    h5ad_path = pick_primary_h5ad(config, args.h5ad)
+    h5ad_path, candidate_audit_df = pick_primary_h5ad(config, args.h5ad)
     summary = run_metadata_audit(
         h5ad_path=h5ad_path,
         out_dir=args.out_dir,
         config_manifest=args.config_manifest,
+        candidate_audit_df=candidate_audit_df,
     )
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0

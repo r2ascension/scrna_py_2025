@@ -129,15 +129,28 @@ def infer_lineage_context(
     return " | ".join(uniq[:25])
 
 
-def lineage_context_keeps_ig(lineage_context: str, spec: Dict[str, Any]) -> bool:
-    policy = str(spec.get("ig_policy", "auto")).strip().lower()
+def lineage_context_keeps_category(category: str, lineage_context: str, spec: Dict[str, Any]) -> bool:
+    category_key = str(category).strip().lower()
+    keep_map = spec.get("category_keep_lineage_patterns", {}) or {}
+    if category_key == "immunoglobulin":
+        policy = str(spec.get("ig_policy", "auto")).strip().lower()
+        keep_patterns = keep_map.get("immunoglobulin") or spec.get("ig_keep_lineage_patterns", [])
+    elif category_key == "secretory":
+        policy = str(spec.get("secretory_policy", "auto")).strip().lower()
+        keep_patterns = keep_map.get("secretory") or spec.get("secretory_keep_lineage_patterns", [])
+    else:
+        return False
     if policy == "keep":
         return True
     if policy == "exclude":
         return False
     if not str(lineage_context).strip():
         return False
-    return bool(_match_regex_any([lineage_context], spec.get("ig_keep_lineage_patterns", []))[0])
+    return bool(_match_regex_any([lineage_context], keep_patterns)[0])
+
+
+def lineage_context_keeps_ig(lineage_context: str, spec: Dict[str, Any]) -> bool:
+    return lineage_context_keeps_category("immunoglobulin", lineage_context, spec)
 
 
 def build_gene_exclusion_packet(
@@ -165,6 +178,7 @@ def build_gene_exclusion_packet(
     mt_match = _match_prefix_any(genes, spec.get("mitochondrial_prefixes", []))
     ribo_match = _match_prefix_any(genes, spec.get("ribosomal_prefixes", []))
     ig_match = _match_regex_any(genes, spec.get("ig_patterns", []))
+    ensembl_match = _match_regex_any(genes, spec.get("ensembl_gene_patterns", []))
 
     lnc_biotypes = {str(x).strip().lower() for x in spec.get("lncrna_biotypes", [])}
     lnc_annotation_match = np.array([
@@ -172,52 +186,75 @@ def build_gene_exclusion_packet(
     ], dtype=bool)
     lnc_heuristic_match = _match_regex_any(genes, spec.get("lncrna_symbol_patterns", []))
     lnc_match = lnc_annotation_match | lnc_heuristic_match
+    secretory_match = _match_regex_any(genes, spec.get("secretory_symbol_patterns", []))
 
-    keep_ig = lineage_context_keeps_ig(lineage_context, spec)
+    keep_ig = lineage_context_keeps_category("immunoglobulin", lineage_context, spec)
+    keep_secretory = lineage_context_keeps_category("secretory", lineage_context, spec)
     exclude_mt = bool(spec.get("exclude_mt", True))
     exclude_ribo = bool(spec.get("exclude_ribo", True))
     exclude_lnc = bool(spec.get("exclude_lncRNA", True))
+    exclude_ensembl = bool(spec.get("exclude_ensembl_ids", True))
+    exclude_secretory = bool(spec.get("exclude_secretory", True))
+
+    category_priority = [
+        str(cat).strip().lower()
+        for cat in spec.get(
+            "category_priority",
+            ["mitochondrial", "ribosomal", "immunoglobulin", "ensembl_id", "lncrna", "secretory", "other"],
+        )
+        if str(cat).strip()
+    ]
+    category_priority = list(dict.fromkeys(category_priority))
+    non_other_priority = [cat for cat in category_priority if cat != "other"]
+
+    category_matches = {
+        "mitochondrial": mt_match,
+        "ribosomal": ribo_match,
+        "immunoglobulin": ig_match,
+        "ensembl_id": ensembl_match,
+        "lncrna": lnc_match,
+        "secretory": secretory_match,
+    }
+    category_can_exclude = {
+        "mitochondrial": exclude_mt,
+        "ribosomal": exclude_ribo,
+        "immunoglobulin": not keep_ig,
+        "ensembl_id": exclude_ensembl,
+        "lncrna": exclude_lnc,
+        "secretory": exclude_secretory and (not keep_secretory),
+    }
 
     should_exclude = np.zeros(len(genes), dtype=bool)
     exclude_reason = np.array(["kept"] * len(genes), dtype=object)
     rule_source = np.array(["none"] * len(genes), dtype=object)
 
-    if exclude_mt:
-        should_exclude[mt_match] = True
-        exclude_reason[mt_match] = "mitochondrial"
-        rule_source[mt_match] = "heuristic"
-    update_idx = ribo_match & ~should_exclude if exclude_ribo else np.zeros(len(genes), dtype=bool)
-    should_exclude[update_idx] = True
-    exclude_reason[update_idx] = "ribosomal"
-    rule_source[update_idx] = "heuristic"
+    for category in non_other_priority:
+        update_idx = category_matches.get(category, np.zeros(len(genes), dtype=bool)) & category_can_exclude.get(category, False) & ~should_exclude
+        if not np.any(update_idx):
+            continue
+        should_exclude[update_idx] = True
+        exclude_reason[update_idx] = category
+        if category == "lncrna":
+            rule_source[update_idx] = np.where(lnc_annotation_match[update_idx], "annotation", "heuristic")
+        else:
+            rule_source[update_idx] = "heuristic"
 
-    ig_exclude = ig_match & (not keep_ig)
-    update_idx = ig_exclude & ~should_exclude
-    should_exclude[update_idx] = True
-    exclude_reason[update_idx] = "immunoglobulin"
-    rule_source[update_idx] = "heuristic"
     kept_ig_idx = ig_match & keep_ig & ~should_exclude
     exclude_reason[kept_ig_idx] = "kept_immunoglobulin_due_to_lineage"
     rule_source[kept_ig_idx] = "heuristic"
 
-    lnc_exclude = lnc_match & exclude_lnc
-    update_idx = lnc_exclude & ~should_exclude
-    should_exclude[update_idx] = True
-    exclude_reason[update_idx] = "lncrna"
-    rule_source[update_idx] = np.where(lnc_annotation_match[update_idx], "annotation", "heuristic")
+    kept_secretory_idx = secretory_match & keep_secretory & ~should_exclude
+    exclude_reason[kept_secretory_idx] = "kept_secretory_due_to_lineage"
+    rule_source[kept_secretory_idx] = "heuristic"
 
     matched_categories: List[str] = []
     primary_category: List[str] = []
     for i in range(len(genes)):
         cats: List[str] = []
-        if mt_match[i]:
-            cats.append("mitochondrial")
-        if ribo_match[i]:
-            cats.append("ribosomal")
-        if ig_match[i]:
-            cats.append("immunoglobulin")
-        if lnc_match[i]:
-            cats.append("lncrna")
+        for category in non_other_priority:
+            match_vec = category_matches.get(category)
+            if match_vec is not None and bool(match_vec[i]):
+                cats.append(category)
         if not cats:
             cats = ["other"]
         matched_categories.append("|".join(cats))
@@ -239,7 +276,7 @@ def build_gene_exclusion_packet(
     max_examples = int(spec.get("max_example_genes", 12) or 12)
     summary_rows: List[Dict[str, Any]] = []
     excluded_total = int(audit_df["should_exclude"].sum())
-    for category in ["mitochondrial", "ribosomal", "immunoglobulin", "lncrna", "other"]:
+    for category in category_priority:
         cat_df = audit_df.loc[audit_df["primary_category"] == category]
         excl_df = cat_df.loc[cat_df["should_exclude"]]
         summary_rows.append(
@@ -262,6 +299,8 @@ def build_gene_exclusion_packet(
         "lineage_context": lineage_context,
         "ig_policy": spec.get("ig_policy", "auto"),
         "keep_ig": keep_ig,
+        "secretory_policy": spec.get("secretory_policy", "auto"),
+        "keep_secretory": keep_secretory,
         "n_total_features": int(len(audit_df)),
         "n_excluded_features": int(len(exclude_genes)),
         "n_kept_features": int(len(keep_genes)),

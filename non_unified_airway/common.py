@@ -13,11 +13,22 @@ import pandas as pd
 DEFAULT_REPO_ROOT = Path("/home/h2048")
 DEFAULT_METHODS_DOC = DEFAULT_REPO_ROOT / "docs/methods/nature_methods_single_cell_respiratory_tract_20260506.md"
 DEFAULT_ALLCELLS_REFERENCE_CANDIDATES = [
+    DEFAULT_REPO_ROOT / "data/py/20260319/allcells_combined_scanvi/allcells_combined_20260319_v1_10_L1.h5ad",
     DEFAULT_REPO_ROOT / "data/core20260115/adata_cleaned_no_doublets_no_GSE299751.h5ad",
     DEFAULT_REPO_ROOT / "data/R/1215/merge/cleaned_samples_COMPLETE_v4.1/merged_seurat_standardized_filterd.h5ad",
 ]
 DEFAULT_MAPPED_QUERY_CANDIDATES = [
     DEFAULT_REPO_ROOT / "data/py/0127/scarches_mapping_FIXED_v1_2/query_mapped_to_reference.h5ad",
+]
+CANDIDATE_AUDIT_OBS_COLUMNS = [
+    "sample",
+    "dataset",
+    "study",
+    "tissue",
+    "tissue_level_2",
+    "tissue_sampling_method",
+    "condition",
+    "disease_level_2",
 ]
 AUDIT_OBS_COLUMNS = [
     "sample",
@@ -434,6 +445,12 @@ def discover_input_inventory(
     mapped_query_candidates = list(mapped_query_candidates or DEFAULT_MAPPED_QUERY_CANDIDATES)
     methods_text = methods_doc_path.read_text(encoding="utf-8")
     lineage_dirs = discover_lineage_output_dirs(methods_text, repo_root=repo_root)
+    candidate_audit_df = summarize_allcells_candidates(allcells_reference_candidates)
+    selected_allcells_reference = None
+    if not candidate_audit_df.empty:
+        selected_rows = candidate_audit_df.loc[candidate_audit_df["selected"]]
+        if not selected_rows.empty:
+            selected_allcells_reference = str(Path(selected_rows.iloc[0]["path"]))
 
     records: list[PathRecord] = []
     for idx, path in enumerate(allcells_reference_candidates, start=1):
@@ -471,6 +488,8 @@ def discover_input_inventory(
         "repo_root": str(repo_root),
         "methods_doc_path": str(methods_doc_path),
         "allcells_reference_candidates": [str(path) for path in allcells_reference_candidates],
+        "selected_allcells_reference": selected_allcells_reference,
+        "allcells_reference_candidate_audit": candidate_audit_df.to_dict(orient="records"),
         "mapped_query_candidates": [str(path) for path in mapped_query_candidates],
         "lineage_output_dirs": [str(path) for path in lineage_dirs],
         "records": [asdict(record) for record in records],
@@ -556,6 +575,144 @@ def choose_first_existing_path(candidates: Iterable[str | Path]) -> Path | None:
         if path.exists():
             return path
     return None
+
+
+def summarize_allcells_candidate(
+    candidate: str | Path,
+    *,
+    obs_columns: Sequence[str] = CANDIDATE_AUDIT_OBS_COLUMNS,
+) -> dict[str, Any]:
+    path = Path(candidate)
+    summary: dict[str, Any] = {
+        "path": str(path),
+        "exists": path.exists(),
+        "candidate_audit_error": "",
+        "healthy_site_groups": "",
+    }
+    if not path.exists():
+        return summary
+
+    try:
+        h5ad_info = inspect_h5ad_light(path)
+        summary.update(h5ad_info)
+        metadata = read_obs_columns_h5py(path, obs_columns)
+        annotated = add_canonical_fields(metadata)
+        sample_manifest = build_sample_manifest(annotated)
+        healthy = sample_manifest.loc[sample_manifest["disease_group"] == "healthy"].copy()
+        healthy_sites = sorted(
+            {
+                site
+                for site in healthy["site_group"].dropna().astype(str)
+                if site not in {"", "nan", "unknown"}
+            }
+        )
+        summary.update(
+            {
+                "n_samples": int(sample_manifest["sample"].nunique()) if "sample" in sample_manifest.columns else 0,
+                "n_datasets": int(sample_manifest["dataset"].nunique()) if "dataset" in sample_manifest.columns else 0,
+                "n_site_groups": int(sample_manifest["site_group"].nunique()) if "site_group" in sample_manifest.columns else 0,
+                "n_healthy_samples": int(healthy["sample"].nunique()) if "sample" in healthy.columns else 0,
+                "n_healthy_datasets": int(healthy["dataset"].nunique()) if "dataset" in healthy.columns else 0,
+                "n_healthy_site_groups": len(healthy_sites),
+                "healthy_site_groups": ";".join(healthy_sites),
+                "healthy_multisite_ready": len(healthy_sites) >= 2,
+            }
+        )
+    except Exception as exc:  # pragma: no cover - defensive path for large H5AD quirks
+        summary["candidate_audit_error"] = f"{type(exc).__name__}: {exc}"
+    return summary
+
+
+def rank_allcells_candidate_summaries(candidate_summaries: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
+    columns = [
+        "candidate_rank",
+        "selected",
+        "path",
+        "exists",
+        "has_counts_layer",
+        "n_healthy_site_groups",
+        "n_healthy_samples",
+        "healthy_site_groups",
+        "healthy_multisite_ready",
+        "n_site_groups",
+        "n_samples",
+        "n_datasets",
+        "n_obs",
+        "n_vars",
+        "raw_var_n",
+        "candidate_audit_error",
+        "selection_reason",
+    ]
+    if not candidate_summaries:
+        return pd.DataFrame(columns=columns)
+
+    df = pd.DataFrame(candidate_summaries).copy()
+    for bool_col in ["exists", "has_counts_layer", "healthy_multisite_ready"]:
+        if bool_col not in df.columns:
+            df[bool_col] = False
+        df[bool_col] = df[bool_col].fillna(False).astype(bool)
+    for text_col in ["healthy_site_groups", "candidate_audit_error"]:
+        if text_col not in df.columns:
+            df[text_col] = ""
+        df[text_col] = df[text_col].fillna("")
+    for numeric_col in [
+        "n_healthy_site_groups",
+        "n_healthy_samples",
+        "n_site_groups",
+        "n_samples",
+        "n_datasets",
+        "n_obs",
+        "n_vars",
+        "raw_var_n",
+    ]:
+        if numeric_col not in df.columns:
+            df[numeric_col] = 0
+        df[numeric_col] = pd.to_numeric(df[numeric_col], errors="coerce").fillna(0).astype(int)
+
+    df["candidate_audit_ok"] = df["candidate_audit_error"].eq("")
+    df = (
+        df.sort_values(
+            by=[
+                "exists",
+                "candidate_audit_ok",
+                "n_healthy_site_groups",
+                "has_counts_layer",
+                "n_healthy_samples",
+                "n_site_groups",
+                "raw_var_n",
+                "n_obs",
+            ],
+            ascending=[False, False, False, False, False, False, False, False],
+        )
+        .reset_index(drop=True)
+    )
+    df["candidate_rank"] = np.arange(1, len(df) + 1)
+    df["selected"] = False
+    df["selection_reason"] = ""
+    selectable_mask = df["exists"] & df["candidate_audit_ok"]
+    if selectable_mask.any():
+        selected_idx = df.index[selectable_mask][0]
+        df.loc[selected_idx, "selected"] = True
+        selected_row = df.loc[selected_idx]
+        df.loc[selected_idx, "selection_reason"] = (
+            "ranked best by healthy-site coverage "
+            f"({int(selected_row['n_healthy_site_groups'])} site groups / {int(selected_row['n_healthy_samples'])} samples) "
+            f"and counts_layer={bool(selected_row['has_counts_layer'])}"
+        )
+    elif not df.empty and bool(df.loc[0, "exists"]):
+        df.loc[0, "selected"] = True
+        df.loc[0, "selection_reason"] = "fallback to first existing candidate because all audits failed"
+
+    return df[[col for col in columns if col in df.columns]]
+
+
+def summarize_allcells_candidates(
+    candidates: Sequence[str | Path],
+    *,
+    obs_columns: Sequence[str] = CANDIDATE_AUDIT_OBS_COLUMNS,
+) -> pd.DataFrame:
+    candidate_summaries = [summarize_allcells_candidate(candidate, obs_columns=obs_columns) for candidate in candidates]
+    return rank_allcells_candidate_summaries(candidate_summaries)
 
 
 def write_json(path: Path, payload: Mapping[str, Any]) -> None:
