@@ -18,8 +18,7 @@ scrna_py_2025/
 ├── R/                     # Seurat、QC、DE、trajectory、interpretation
 ├── py/                    # scVI/scANVI、CellTypist、BBKNN、scArches
 ├── GetSeurat.R            # h5ad → Seurat 读取桥接
-├── README.md
-└── CLAUDE.md
+└── README.md
 ```
 
 ### `py/` 主要内容
@@ -184,7 +183,6 @@ pip install scanpy scvi-tools celltypist bbknn anndata
 
 ## 相关文档
 
-- `CLAUDE.md`
 - `py/CLAUDE.md`
 - `R/CLAUDE.md`
 - `py/SCRIPT_CATEGORIZATION.md`
@@ -201,4 +199,3 @@ pip install scanpy scvi-tools celltypist bbknn anndata
 3. `py/allcells_scvi_celltypist_scanvi_pipeline_20260121_v2_5_2.py`
 4. `py/universal_celltype_subcluster_pipeline_20260121_v4_1.py`
 5. `py/scarches_mapping_20260127_v1_2_1.py`
-
