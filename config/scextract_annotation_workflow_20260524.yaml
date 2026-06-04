@@ -1,0 +1,117 @@
+run:
+  execution_mode: compare_only
+  selected_label_source: compare_only
+  output_root: /home/h2048/data/py/20260524
+  run_name_prefix: scextract_annotation_consistency
+  keep_intermediates: true
+  materialize_preflight_copy: false
+  write_branch_h5ad: false
+
+summary:
+  top_n_labels_plot: 12
+  figure_dpi: 150
+  write_pdf: true
+  generate_umap_if_present: true
+  umap_key: X_umap
+  max_legend_labels: 12
+  umap_point_size: 4.0
+  umap_alpha: 0.8
+
+deepseek:
+  env_key: DEEPSEEK_API_KEY
+  type: openai
+  base_url: https://api.deepseek.com/v1
+  model: deepseek-chat
+  tool_model: deepseek-chat
+
+scextract:
+  repo_dir: /home/h2048/tools/scExtract
+  python_executable: auto
+  output_name: scextract_processed.h5ad
+
+data_contract:
+  counts_layer: counts
+  cluster_key: leiden
+  cluster_key_candidates:
+    - leiden
+    - seurat_clusters
+    - louvain
+    - choir_l3
+    - choir_cluster
+    - cluster
+    - cell_type_L3
+    - cell_type_L2
+  batch_key: Batch
+  true_group_key: null
+  unknown_label: Unknown
+  min_cells_per_type: 10
+  auto_create_batch_key: true
+  auto_compute_cluster_key: true
+
+celltypist:
+  enabled: true
+  auto_select_model: true
+  lineage_name: auto
+  model_path: /home/h2048/data/source/reference/celltypist_models/Human_Lung_Atlas.pkl
+  default_model_path: /home/h2048/data/source/reference/celltypist_models/Human_Lung_Atlas.pkl
+  lineage_model_map:
+    bcell: /home/h2048/data/source/reference/celltypist_models/Immune_All_Low.pkl
+    tnk: /home/h2048/data/source/reference/celltypist_models/Immune_All_Low.pkl
+    myeloid: /home/h2048/data/source/reference/celltypist_models/Immune_All_Low.pkl
+    epithelial: /home/h2048/data/source/reference/celltypist_models/Cells_Lung_Airway.pkl
+    stromal_endothelial: /home/h2048/data/source/reference/celltypist_models/Cells_Lung_Airway.pkl
+    stromal_fibroblast: /home/h2048/data/source/reference/celltypist_models/Cells_Lung_Airway.pkl
+    stromal_smc: /home/h2048/data/source/reference/celltypist_models/Cells_Lung_Airway.pkl
+  majority_voting: true
+  min_confidence: 0.0
+
+sctype:
+  enabled: true
+  tissue: Lung
+  db_path: /home/h2048/data/source/reference/sctype/ScTypeDB_full.xlsx
+  unknown_min_score: 0.0
+
+mllmcelltype:
+  enabled: true
+  adapter_mode: callable
+  precomputed_h5ad: null
+  repo_dir: /home/h2048/script/py
+  module_path: mllmcelltype_native_adapter_20260525
+  callable_name: annotate_with_mllmcelltype
+  label_column: mllmcelltype_annotation
+  confidence_column: mllmcelltype_confidence_scextract
+  score_column: mllmcelltype_score
+  output_name: mllmcelltype_annotation.h5ad
+  min_confidence: 0.0
+  package_mode: single_model
+  env_key: DEEPSEEK_API_KEY
+  species: human
+  tissue: Lung
+  cluster_key: null
+  auto_lineage_context: true
+  top_n_markers: 10
+  marker_method: wilcoxon
+  provider: deepseek
+  model: deepseek-chat
+  models:
+    - provider: deepseek
+      model: deepseek-chat
+  consensus_model:
+    provider: deepseek
+    model: deepseek-chat
+  consensus_threshold: 0.7
+  entropy_threshold: 1.0
+  max_discussion_rounds: 1
+  use_cache: true
+  cache_dir: null
+  verbose: false
+  base_url: https://api.deepseek.com/v1
+  additional_context: null
+  force_rerun: false
+  function_kwargs: {}
+
+aliases:
+  scExtract: cell_type_scextract
+  celltypist_annotation: cell_type_celltypist_scextract
+  sctype_annotation: cell_type_sctype_scextract
+  mllmcelltype_annotation: cell_type_mllmcelltype_scextract

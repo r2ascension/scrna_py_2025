@@ -9,7 +9,11 @@ import pandas as pd
 PY_DIR = Path(__file__).resolve().parents[1]
 if str(PY_DIR) not in sys.path:
     sys.path.insert(0, str(PY_DIR))
+NORMAL_AIRWAY_ML_MODULE_DIR = PY_DIR / "normal_airway_ml"
+if str(NORMAL_AIRWAY_ML_MODULE_DIR) not in sys.path:
+    sys.path.insert(0, str(NORMAL_AIRWAY_ML_MODULE_DIR))
 
+from core_discovery_20260531 import run_core_discovery
 from normal_airway_ml_common_20260527 import default_config, make_toy_airway_adata, prepare_obs_contract
 from normal_airway_ml_feature_export_20260527 import run_feature_export
 from normal_airway_ml_smoke_20260527 import run_smoke
@@ -29,6 +33,18 @@ def tiny_cfg() -> dict:
     cfg["train"]["n_splits"] = 3
     cfg["train"]["permutation_repeats"] = 3
     cfg["train"]["model_names"] = ["logistic_regression", "random_forest"]
+    cfg["core_discovery"]["methods"] = ["ridge_logistic", "random_forest"]
+    cfg["core_discovery"]["site_order"] = ["nasal", "sinus"]
+    cfg["core_discovery"]["stability_repeats"] = 3
+    cfg["core_discovery"]["max_genes_for_models"] = 30
+    cfg["core_discovery"]["model_top_k_genes"] = 8
+    cfg["core_discovery"]["min_cells_per_sample_celltype"] = 5
+    cfg["core_discovery"]["logistic_max_iter"] = 400
+    cfg["core_discovery"]["export_pseudobulk_tables"] = False
+    cfg["core_discovery"]["stable_gene"]["max_adj_p"] = 0.5
+    cfg["core_discovery"]["stable_gene"]["min_abs_log2_fc"] = 0.25
+    cfg["core_discovery"]["stable_gene"]["min_selection_freq"] = 0.2
+    cfg["core_discovery"]["stable_gene"]["min_direction_consistency"] = 0.0
     return cfg
 
 
@@ -40,9 +56,11 @@ def test_prepare_obs_contract_normalizes_sites_and_healthy() -> None:
     assert contract["sample_col"] == "sample"
     assert contract["condition_col"] == "condition"
     assert contract["cell_type_col"] == "cell_type_L2"
+    assert contract["sample_unit_col"] == "sample_unit_resolved"
     assert contract["latent_key"] in {"X_scvi", "X_scanvi"}
     assert set(healthy["site_label"].unique()) == {"nasal", "sinus", "bronchus", "lung_parenchyma"}
     assert healthy["condition_resolved"].eq("Healthy").all()
+    assert healthy["sample_unit_resolved"].nunique() == healthy["sample_resolved"].nunique()
 
 
 def test_feature_export_and_training_toy(tmp_path: Path) -> None:
@@ -63,6 +81,24 @@ def test_feature_export_and_training_toy(tmp_path: Path) -> None:
     assert perf["status"].eq("ok").any()
 
 
+def test_core_discovery_toy_outputs(tmp_path: Path) -> None:
+    cfg = tiny_cfg()
+    adata = make_toy_airway_adata(cfg, seed=999)
+    input_h5ad = tmp_path / "toy_input.h5ad"
+    adata.write_h5ad(input_h5ad)
+
+    core_root = tmp_path / "core_run"
+    manifest = run_core_discovery(input_h5ad=input_h5ad, cfg=cfg, output_dir=core_root)
+    assert manifest["n_celltypes_pseudobulked"] > 0
+    assert manifest["n_contrasts"] > 0
+    contrast_summary = pd.read_csv(core_root / "summaries" / "contrast_summary.tsv", sep="\t")
+    assert not contrast_summary.empty
+    assert contrast_summary["contrast_type"].isin(["pairwise", "one_vs_rest"]).all()
+    stable_core = pd.read_csv(core_root / "summaries" / "stable_core_genes.tsv", sep="\t")
+    assert not stable_core.empty
+    assert {"cell_type", "contrast_id", "gene", "stable_core", "consensus_score"}.issubset(stable_core.columns)
+
+
 def test_smoke_toy_end_to_end(tmp_path: Path) -> None:
     cfg = tiny_cfg()
     smoke_root = tmp_path / "smoke_run"
@@ -71,3 +107,5 @@ def test_smoke_toy_end_to_end(tmp_path: Path) -> None:
     assert Path(summary["audit_summary_json"]).exists()
     assert Path(summary["feature_manifest_json"]).exists()
     assert Path(summary["model_manifest_json"]).exists()
+    assert Path(summary["core_manifest_json"]).exists()
+    assert summary["core_discovery_contrasts"] is not None

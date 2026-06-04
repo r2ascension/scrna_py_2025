@@ -11,13 +11,16 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, confusion_matrix, f1_score
 from sklearn.model_selection import GroupKFold, KFold, LeaveOneGroupOut, StratifiedKFold
+from sklearn.naive_bayes import GaussianNB
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.svm import LinearSVC
 
 from normal_airway_ml_common_20260527 import DEFAULT_OUTPUT_ROOT, deep_get, ensure_dir, load_config, split_feature_metadata, timestamp_slug, write_json
 
@@ -27,7 +30,48 @@ except Exception:  # pragma: no cover
     XGBClassifier = None
 
 
-MODEL_ORDER = ["logistic_regression", "random_forest", "xgboost"]
+MODEL_ORDER = [
+    "logistic_regression",
+    "ridge_logistic",
+    "lasso_logistic",
+    "elastic_net_logistic",
+    "linear_svm",
+    "lda",
+    "naive_bayes",
+    "random_forest",
+    "xgboost",
+]
+
+
+def build_logistic_pipeline(model_name: str, cfg: dict[str, Any], seed: int) -> Pipeline:
+    penalty = "l2"
+    solver = "lbfgs"
+    clf_kwargs: dict[str, Any] = {}
+    if model_name == "lasso_logistic":
+        penalty = "l1"
+        solver = "saga"
+    elif model_name == "elastic_net_logistic":
+        penalty = "elasticnet"
+        solver = "saga"
+        clf_kwargs["l1_ratio"] = float(deep_get(cfg, "train", "elastic_net_l1_ratio", default=0.5))
+
+    return Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="constant", fill_value=0.0)),
+            ("scaler", StandardScaler()),
+            (
+                "clf",
+                LogisticRegression(
+                    max_iter=int(deep_get(cfg, "train", "logistic_max_iter", default=2000)),
+                    random_state=seed,
+                    class_weight="balanced",
+                    penalty=penalty,
+                    solver=solver,
+                    **clf_kwargs,
+                ),
+            ),
+        ]
+    )
 
 
 def load_feature_bundle(feature_dir: Path | str) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -41,19 +85,30 @@ def load_feature_bundle(feature_dir: Path | str) -> tuple[pd.DataFrame, pd.DataF
 
 def build_model(model_name: str, cfg: dict[str, Any], feature_names: list[str]):
     seed = int(deep_get(cfg, "train", "random_seed", default=20260527))
-    if model_name == "logistic_regression":
+    if model_name in {"logistic_regression", "ridge_logistic", "lasso_logistic", "elastic_net_logistic"}:
+        return build_logistic_pipeline(model_name, cfg, seed)
+    if model_name == "linear_svm":
         return Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy="constant", fill_value=0.0)),
                 ("scaler", StandardScaler()),
-                (
-                    "clf",
-                    LogisticRegression(
-                        max_iter=int(deep_get(cfg, "train", "logistic_max_iter", default=2000)),
-                        random_state=seed,
-                        class_weight="balanced",
-                    ),
-                ),
+                ("clf", LinearSVC(class_weight="balanced", random_state=seed)),
+            ]
+        )
+    if model_name == "lda":
+        return Pipeline(
+            steps=[
+                ("imputer", SimpleImputer(strategy="constant", fill_value=0.0)),
+                ("scaler", StandardScaler()),
+                ("clf", LinearDiscriminantAnalysis(solver="lsqr", shrinkage="auto")),
+            ]
+        )
+    if model_name == "naive_bayes":
+        return Pipeline(
+            steps=[
+                ("imputer", SimpleImputer(strategy="constant", fill_value=0.0)),
+                ("scaler", StandardScaler()),
+                ("clf", GaussianNB()),
             ]
         )
     if model_name == "random_forest":
@@ -209,10 +264,23 @@ def safe_dataset_name(series: pd.Series) -> str:
 
 
 def compute_feature_importance(model, feature_names: list[str], model_name: str) -> pd.DataFrame:
-    if model_name == "logistic_regression":
+    if model_name in {"logistic_regression", "ridge_logistic", "lasso_logistic", "elastic_net_logistic", "linear_svm"}:
         clf = model.named_steps["clf"] if hasattr(model, "named_steps") else model
         coef = np.asarray(clf.coef_, dtype=float)
         importance = np.mean(np.abs(coef), axis=0)
+    elif model_name == "lda":
+        clf = model.named_steps["clf"] if hasattr(model, "named_steps") else model
+        if hasattr(clf, "coef_"):
+            coef = np.asarray(clf.coef_, dtype=float)
+        else:
+            coef = np.asarray(getattr(clf, "scalings_", np.zeros((len(feature_names), 1))), dtype=float).T
+        importance = np.mean(np.abs(coef), axis=0)
+    elif model_name == "naive_bayes":
+        clf = model.named_steps["clf"] if hasattr(model, "named_steps") else model
+        theta = np.asarray(getattr(clf, "theta_", np.zeros((1, len(feature_names)))), dtype=float)
+        var = np.asarray(getattr(clf, "var_", np.ones_like(theta)), dtype=float)
+        centered = theta - theta.mean(axis=0, keepdims=True)
+        importance = np.mean(np.abs(centered) / (np.sqrt(var) + 1e-8), axis=0)
     else:
         importance = np.asarray(getattr(model, "feature_importances_", np.zeros(len(feature_names))), dtype=float)
     df = pd.DataFrame({"feature": feature_names, "importance": importance})

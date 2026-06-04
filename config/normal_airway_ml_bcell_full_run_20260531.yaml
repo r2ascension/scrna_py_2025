@@ -1,0 +1,44 @@
+run:
+  output_root: /home/h2048/data/py/20260531
+  run_name_prefix: normal_airway_ml_bcell_full_run
+  random_seed: 20260531
+
+data_contract:
+  input_h5ad: /home/h2048/data/R/0508/bcell_tissue_comparison_v2_6_8_c22_c13_c25_c14drop_20260508/bcell_tissue_comparison_final_fullgene.h5ad
+  healthy_values:
+    - healthy
+    - control
+    - normal
+    - donor
+    - non-diseased
+    - nondiseased
+    - unknown
+
+feature_export:
+  cell_type_key: cell_type_L2
+
+train:
+  dataset_group_column: dataset
+  random_seed: 20260531
+  logistic_max_iter: 3000
+
+core_discovery:
+  enabled: true
+  cell_type_key: cell_type_L2
+  dataset_group_column: dataset
+  random_seed: 20260531
+  logistic_max_iter: 3000
+  consensus_weights:
+    effect: 0.25
+    significance: 0.25
+    stability: 0.25
+    dataset_consistency: 0.25
+  stable_gene:
+    max_adj_p: 0.05
+    min_abs_log2_fc: 0.5
+    min_selection_freq: 0.35
+    min_selected_methods: 2
+    min_direction_consistency: 0.6
+
+smoke:
+  real_input_h5ad: /home/h2048/data/R/0508/bcell_tissue_comparison_v2_6_8_c22_c13_c25_c14drop_20260508/bcell_tissue_comparison_final_fullgene.h5ad

@@ -5,10 +5,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 import anndata as ad
+
+NORMAL_AIRWAY_ML_MODULE_DIR = Path(__file__).resolve().parent / "normal_airway_ml"
+if str(NORMAL_AIRWAY_ML_MODULE_DIR) not in sys.path:
+    sys.path.insert(0, str(NORMAL_AIRWAY_ML_MODULE_DIR))
 
 from normal_airway_ml_audit_20260527 import run_audit
 from normal_airway_ml_common_20260527 import (
@@ -21,6 +26,7 @@ from normal_airway_ml_common_20260527 import (
     timestamp_slug,
     write_json,
 )
+from core_discovery_20260531 import run_core_discovery
 from normal_airway_ml_feature_export_20260527 import run_feature_export
 from normal_airway_ml_train_sample_level_20260527 import run_training
 
@@ -45,6 +51,7 @@ def run_smoke(smoke_mode: str, cfg: dict[str, Any], output_dir: Path | str) -> d
     audit_dir = ensure_dir(Path(output_dir) / "audit")
     feature_dir = ensure_dir(Path(output_dir) / "feature_export")
     train_dir = ensure_dir(Path(output_dir) / "train")
+    core_dir = ensure_dir(Path(output_dir) / "core_discovery")
 
     try:
         adata, input_summary = build_smoke_input(smoke_mode, cfg)
@@ -64,6 +71,9 @@ def run_smoke(smoke_mode: str, cfg: dict[str, Any], output_dir: Path | str) -> d
     audit_summary = run_audit(input_h5ad=input_h5ad, cfg=cfg, output_dir=audit_dir)
     feature_manifest = run_feature_export(adata=adata, cfg=cfg, output_dir=feature_dir)
     model_manifest = run_training(feature_dir=Path(feature_dir) / "features", cfg=cfg, output_dir=train_dir)
+    core_manifest = None
+    if bool(deep_get(cfg, "core_discovery", "enabled", default=True)):
+        core_manifest = run_core_discovery(input_h5ad=input_h5ad, cfg=cfg, output_dir=core_dir)
 
     summary = {
         "smoke_mode": smoke_mode,
@@ -73,9 +83,12 @@ def run_smoke(smoke_mode: str, cfg: dict[str, Any], output_dir: Path | str) -> d
         "audit_summary_json": str(Path(audit_dir) / "audit_summary.json"),
         "feature_manifest_json": str(Path(feature_dir) / "features" / "feature_manifest.json"),
         "model_manifest_json": str(Path(train_dir) / "model" / "model_manifest.json"),
+        "core_manifest_json": str(Path(core_dir) / "core_manifest.json") if core_manifest is not None else None,
         "audit_analysis_cells": audit_summary.get("n_analysis_cells"),
         "feature_samples": feature_manifest.get("n_samples"),
         "trained_models": model_manifest.get("model_names"),
+        "core_discovery_contrasts": core_manifest.get("n_contrasts") if core_manifest is not None else None,
+        "stable_core_rows": core_manifest.get("n_stable_core_rows") if core_manifest is not None else None,
     }
     write_json(summary, Path(output_dir) / "smoke_summary.json")
     return summary

@@ -45,6 +45,11 @@ P1-6 [IMPROVE] select_hvg_robust: expanded from 2-tier to 3-tier fallback:
      batch-aware seurat_v3 -> non-batch seurat_v3 -> non-batch cell_ranger.
      The cell_ranger flavor is most tolerant of sparse/edge-case data.
 
+P1-8 [BUGFIX] select_hvg_robust: add a final manual log1p-dispersion HVG
+    fallback for degenerate small subsets where scanpy HVG selection fails
+    due to loess near-singularities or duplicate mean bins. Also skip the
+    batch-aware tier when the requested batch column has <2 observed values.
+
 P2-7 [IMPROVE] setup_logger: refactored from root-logger manipulation
      (logging.basicConfig + clear root handlers) to named logger with
      propagate=False. Non-invasive when used as an imported library module.
@@ -327,6 +332,105 @@ def detect_technical_genes(var_names: pd.Index) -> Dict[str, List[str]]:
 # SECTION 2 — HVG SELECTION
 # ============================================================================
 
+def _observed_value_count(adata: sc.AnnData, obs_col: Optional[str]) -> int:
+    """
+    Count non-empty observed values in an obs column.
+
+    Used to avoid batch-aware HVG selection when a subset only contains a
+    single effective batch label.
+    """
+    if not obs_col or obs_col not in adata.obs.columns:
+        return 0
+
+    vals = pd.Series(adata.obs[obs_col], dtype='object')
+    vals = vals[vals.notna()].astype(str).str.strip()
+    vals = vals[(vals != '') & ~vals.isin(['nan', 'None', 'NA'])]
+    return int(vals.nunique())
+
+
+def _manual_hvg_log1p_dispersion(
+    adata       : sc.AnnData,
+    num_hvg     : int = 3000,
+    target_sum  : float = 1e4,
+) -> Tuple[List[str], Dict[str, Any]]:
+    """
+    Last-resort HVG selector for degenerate subsets.
+
+    Strategy:
+      1. start from layers['counts']
+      2. library-normalize to target_sum
+      3. log1p transform
+      4. rank genes by log-normalized dispersion (variance / mean)
+
+    A light detection filter is applied first; if it leaves too few genes,
+    the filter is relaxed to genes with any non-zero count.
+    """
+    if 'counts' not in adata.layers:
+        raise ValueError("layers['counts'] not found for manual HVG fallback")
+
+    X = adata.layers['counts']
+    if sp.issparse(X):
+        X = X.tocsr(copy=True).astype(np.float64)
+    else:
+        X = sp.csr_matrix(np.asarray(X, dtype=np.float64))
+
+    target_n = min(num_hvg, max(1, adata.n_vars - 1))
+    if target_n < 1:
+        raise ValueError('Need at least 2 genes to select HVGs')
+
+    cell_sums = np.asarray(X.sum(axis=1)).ravel()
+    scale = np.divide(target_sum, np.maximum(cell_sums, 1.0))
+    X = X.multiply(scale[:, None]).tocsr()
+    X.data = np.log1p(X.data)
+
+    detected = np.asarray(X.getnnz(axis=0)).ravel()
+    min_detected_cells = max(3, int(np.ceil(adata.n_obs * 0.01)))
+    valid = detected >= min_detected_cells
+    detection_filter_relaxed = False
+    if int(valid.sum()) < target_n:
+        valid = detected > 0
+        detection_filter_relaxed = True
+
+    means = np.asarray(X.mean(axis=0)).ravel()
+    X_sq = X.copy()
+    X_sq.data **= 2
+    second_moment = np.asarray(X_sq.mean(axis=0)).ravel()
+    variances = np.maximum(second_moment - means ** 2, 0.0)
+
+    finite = valid & np.isfinite(means) & np.isfinite(variances) & (variances > 0)
+    if not finite.any():
+        raise RuntimeError('manual HVG fallback found no finite positive-variance genes')
+
+    dispersions = np.full(adata.n_vars, np.nan, dtype=float)
+    dispersions[finite] = variances[finite] / np.maximum(means[finite], 1e-3)
+
+    finite_idx = np.flatnonzero(finite)
+    ranked_idx = finite_idx[np.argsort(-dispersions[finite_idx], kind='mergesort')]
+    selected_idx = ranked_idx[: min(target_n, len(ranked_idx))]
+    if len(selected_idx) == 0:
+        raise RuntimeError('manual HVG fallback could not rank any genes')
+
+    hvg_mask = np.zeros(adata.n_vars, dtype=bool)
+    hvg_mask[selected_idx] = True
+    hvg_rank = np.full(adata.n_vars, np.nan, dtype=float)
+    hvg_rank[selected_idx] = np.arange(1, len(selected_idx) + 1, dtype=float)
+
+    adata.var['highly_variable'] = hvg_mask
+    adata.var['highly_variable_rank'] = hvg_rank
+    adata.var['means'] = means
+    adata.var['variances'] = variances
+    adata.var['dispersions'] = dispersions
+    adata.uns['hvg_manual_fallback'] = {
+        'method': 'manual-log1p-dispersion',
+        'target_sum': float(target_sum),
+        'min_detected_cells': int(min_detected_cells),
+        'detection_filter_relaxed': bool(detection_filter_relaxed),
+        'n_valid_ranked_genes': int(len(ranked_idx)),
+        'n_selected_genes': int(len(selected_idx)),
+    }
+
+    return adata.var_names[hvg_mask].tolist(), adata.uns['hvg_manual_fallback']
+
 def select_hvg_robust(
     adata          : sc.AnnData,
     num_hvg        : int             = 3000,
@@ -335,7 +439,7 @@ def select_hvg_robust(
     exclude_tech   : bool            = False,
 ) -> Tuple[List[str], str, Dict[str, List[str]]]:
     """
-    Robust HVG selection with batch-aware → non-batch-aware fallback.
+    Robust HVG selection with batch-aware → non-batch-aware → manual fallback.
 
     Always reads from layers['counts'].
     Caps num_hvg to adata.n_vars - 1 automatically.
@@ -362,11 +466,20 @@ def select_hvg_robust(
 
     logger.info(f"[INFO] Selecting {num_hvg} HVGs (flavor={hvg_flavor})...")
 
-    # 3-tier fallback: batch-aware → non-batch-aware (same flavor) → cell_ranger
+    n_batches = _observed_value_count(adata, batch_key)
+
+    # 4-tier fallback:
+    #   Tier-1: batch-aware seurat_v3 (only if >=2 observed batches)
+    #   Tier-2: non-batch-aware same flavor
+    #   Tier-3: non-batch-aware cell_ranger
+    #   Tier-4: manual log1p-dispersion ranking
     # Tier 1: batch-aware seurat_v3
     try:
-        if batch_key and batch_key in adata.obs.columns:
-            logger.info(f"  Tier-1: batch-aware HVG (batch_key={batch_key}, flavor={hvg_flavor})...")
+        if batch_key and batch_key in adata.obs.columns and n_batches >= 2:
+            logger.info(
+                f"  Tier-1: batch-aware HVG (batch_key={batch_key}, "
+                f"observed_batches={n_batches}, flavor={hvg_flavor})..."
+            )
             sc.pp.highly_variable_genes(
                 adata,
                 layer       = 'counts',
@@ -378,7 +491,9 @@ def select_hvg_robust(
             method_used = f'batch-aware-{hvg_flavor}'
             logger.info(f"  [OK] Tier-1 succeeded")
         else:
-            raise ValueError("No batch_key — skip Tier-1")
+            raise ValueError(
+                f"No usable batch_key (batch_key={batch_key}, observed_batches={n_batches}) — skip Tier-1"
+            )
     except Exception as e1:
         logger.warning(f"  Tier-1 failed ({e1}), trying Tier-2...")
         # Tier 2: non-batch-aware, same flavor
@@ -408,10 +523,24 @@ def select_hvg_robust(
                 method_used = 'non-batch-cell_ranger'
                 logger.info(f"  [OK] Tier-3 (cell_ranger) succeeded")
             except Exception as e3:
-                raise RuntimeError(
-                    f"All 3 HVG tiers failed.\n"
-                    f"  Tier-1: {e1}\n  Tier-2: {e2}\n  Tier-3: {e3}"
-                ) from e3
+                logger.warning(f"  Tier-3 failed ({e3}), trying Tier-4 (manual log1p-dispersion)...")
+                try:
+                    hvg_genes, manual_info = _manual_hvg_log1p_dispersion(
+                        adata,
+                        num_hvg=num_hvg,
+                    )
+                    method_used = 'manual-log1p-dispersion'
+                    logger.info(
+                        "  [OK] Tier-4 succeeded "
+                        f"(selected={manual_info.get('n_selected_genes')}, "
+                        f"valid={manual_info.get('n_valid_ranked_genes')}, "
+                        f"relaxed={manual_info.get('detection_filter_relaxed')})"
+                    )
+                except Exception as e4:
+                    raise RuntimeError(
+                        f"All 4 HVG tiers failed.\n"
+                        f"  Tier-1: {e1}\n  Tier-2: {e2}\n  Tier-3: {e3}\n  Tier-4: {e4}"
+                    ) from e4
 
     hvg_mask  = adata.var['highly_variable'].values
     hvg_genes = adata.var_names[hvg_mask].tolist()
@@ -1432,6 +1561,9 @@ def plot_gep_usage_heatmap(
         col_ord = _hclust_order(mean_mat.values.T)
         ordered = mean_mat.iloc[row_ord, col_ord]
 
+        csv_out = viz_dir / f'gep_usage_mean_by_celltype_k{k}.csv'
+        ordered.to_csv(csv_out)
+
         fig, ax = plt.subplots(figsize=(max(12, n_cols * 0.6), max(4, n_rows * 0.4)))
         im = ax.imshow(ordered.values, cmap='RdYlBu_r', aspect='auto', interpolation='nearest')
 
@@ -1450,7 +1582,7 @@ def plot_gep_usage_heatmap(
         out = viz_dir / f'gep_usage_heatmap_k{k}.{cfg["figure_format"]}'
         plt.savefig(out, dpi=cfg['dpi'], bbox_inches='tight')
         plt.close()
-        logger.info(f"    [OK] {out.name}")
+        logger.info(f"    [OK] {out.name}; {csv_out.name}")
         return True
 
     except Exception as e:
@@ -1539,99 +1671,6 @@ def plot_umap_gep_usage(
     return True
 
 
-def plot_gep_gene_pattern_heatmap(
-    cnmf_output_dir : Path,
-    name            : str,
-    k               : int,
-    viz_dir         : Path,
-    n_top           : int = 20,
-    viz_config      : Optional[Dict] = None,
-) -> bool:
-    """Heatmap of top gene weights for each cNMF GEP."""
-    cfg = {**DEFAULT_VIZ_CONFIG, **(viz_config or {})}
-    logger.info(f"  GEP top-gene pattern heatmap (K={k})...")
-    try:
-        cnmf_run_dir = cnmf_output_dir / name
-        top_df = extract_top_genes_with_scores_per_gep(cnmf_run_dir, name, k, n_top=n_top)
-        if top_df is None or top_df.empty:
-            return False
-        genes = list(dict.fromkeys(top_df['gene'].astype(str).tolist()))
-        mat = top_df.pivot_table(index='gene', columns='gep', values='score', aggfunc='max').reindex(genes).fillna(0.0)
-        if mat.empty:
-            return False
-        fig_h = max(5.0, min(22.0, 0.18 * mat.shape[0] + 2.5))
-        fig_w = max(7.0, 0.7 * mat.shape[1] + 3.0)
-        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-        im = ax.imshow(mat.values, aspect='auto', cmap='viridis')
-        ax.set_xticks(range(mat.shape[1]))
-        ax.set_xticklabels(mat.columns, rotation=45, ha='right', fontsize=9)
-        ax.set_yticks(range(mat.shape[0]))
-        ax.set_yticklabels(mat.index, fontsize=6)
-        ax.set_xlabel('GEP')
-        ax.set_ylabel('Top genes')
-        ax.set_title(f'cNMF GEP top-gene weights (K={k}, top {n_top}/GEP)', fontsize=12, weight='bold')
-        cb = plt.colorbar(im, ax=ax, fraction=0.025, pad=0.02)
-        cb.set_label('Spectra score', rotation=270, labelpad=18)
-        plt.tight_layout()
-        out = viz_dir / f'gep_gene_pattern_heatmap_k{k}.{cfg["figure_format"]}'
-        plt.savefig(out, dpi=cfg['dpi'], bbox_inches='tight')
-        plt.close()
-        logger.info(f"    [OK] {out.name}")
-        return True
-    except Exception as e:
-        logger.warning(f"  [WARN] GEP top-gene heatmap failed (K={k}): {e}")
-        plt.close('all')
-        return False
-
-
-def plot_gep_top_gene_barplots(
-    cnmf_output_dir : Path,
-    name            : str,
-    k               : int,
-    viz_dir         : Path,
-    n_top           : int = 10,
-    max_geps        : int = 12,
-    viz_config      : Optional[Dict] = None,
-) -> bool:
-    """Small-multiple barplots of top genes per GEP for LLM/human review."""
-    cfg = {**DEFAULT_VIZ_CONFIG, **(viz_config or {})}
-    logger.info(f"  GEP top-gene barplots (K={k})...")
-    try:
-        cnmf_run_dir = cnmf_output_dir / name
-        top_df = extract_top_genes_with_scores_per_gep(cnmf_run_dir, name, k, n_top=n_top)
-        if top_df is None or top_df.empty:
-            return False
-        geps = list(dict.fromkeys(top_df['gep'].astype(str).tolist()))[:max_geps]
-        n_show = len(geps)
-        if n_show == 0:
-            return False
-        ncols = min(4, n_show)
-        nrows = int(np.ceil(n_show / ncols))
-        fig, axes = plt.subplots(nrows, ncols, figsize=(4.5 * ncols, 3.8 * nrows))
-        axes_flat = np.array(axes).flatten() if nrows * ncols > 1 else np.array([axes])
-        for i, gep in enumerate(geps):
-            ax = axes_flat[i]
-            sub = top_df[top_df['gep'].astype(str) == gep].sort_values('score', ascending=True).tail(n_top)
-            ax.barh(sub['gene'].astype(str), sub['score'].astype(float), color='#4C78A8')
-            ax.set_title(gep, fontsize=10, weight='bold')
-            ax.tick_params(axis='y', labelsize=7)
-            ax.tick_params(axis='x', labelsize=7)
-            ax.set_xlabel('Score', fontsize=8)
-        for j in range(n_show, len(axes_flat)):
-            axes_flat[j].set_visible(False)
-        fig.suptitle(f'cNMF top genes per GEP (K={k})', fontsize=13, weight='bold')
-        plt.tight_layout()
-        out = viz_dir / f'gep_top_gene_barplots_k{k}.{cfg["figure_format"]}'
-        plt.savefig(out, dpi=cfg['dpi'], bbox_inches='tight')
-        plt.close()
-        logger.info(f"    [OK] {out.name}")
-        return True
-    except Exception as e:
-        logger.warning(f"  [WARN] GEP top-gene barplots failed (K={k}): {e}")
-        plt.close('all')
-        return False
-
-
 def generate_all_visualizations(
     cnmf_output_dir : Path,
     name            : str,
@@ -1642,12 +1681,10 @@ def generate_all_visualizations(
     viz_config      : Optional[Dict] = None,
 ) -> Dict[int, Dict[str, bool]]:
     """
-        Generate standard visualizations for each K:
+    Generate all three standard visualizations for each K:
       - local_density histogram
       - GEP clustergram
       - GEP usage heatmap by cell type
-            - GEP top-gene pattern heatmap
-            - GEP top-gene barplots
 
     Returns nested dict: {k: {plot_name: True/False}}
     """
@@ -1674,21 +1711,15 @@ def generate_all_visualizations(
         kr['usage_heatmap'] = plot_gep_usage_heatmap(
             cnmf_output_dir, name, k, adata, celltype_col, viz_dir, viz_config)
 
-        kr['gene_pattern_heatmap'] = plot_gep_gene_pattern_heatmap(
-            cnmf_output_dir, name, k, viz_dir, n_top=20, viz_config=viz_config)
-
-        kr['top_gene_barplots'] = plot_gep_top_gene_barplots(
-            cnmf_output_dir, name, k, viz_dir, n_top=10, max_geps=12, viz_config=viz_config)
-
         n_ok = sum(kr.values())
-        logger.info(f"  {n_ok}/{len(kr)} plots succeeded")
+        logger.info(f"  {n_ok}/3 plots succeeded")
 
         results[k] = kr
         plt.close('all')
         gc.collect()
 
     total_ok = sum(sum(v.values()) for v in results.values())
-    total    = sum(len(v) for v in results.values())
+    total    = len(k_range) * 3
     logger.info(f"\n[OK] Visualization summary: {total_ok}/{total} plots")
 
     return results
