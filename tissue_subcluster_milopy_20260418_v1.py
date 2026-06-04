@@ -17,11 +17,13 @@ Notes
 
 Recommended invocation environment
 ----------------------------------
-Use the pertpy environment and clear inherited user-site / library-path pollution:
+Use the pertpy environment directly, keep user-site packages disabled, and
+prepend the environment `lib/` ahead of system R libraries:
 
-    env -u LD_LIBRARY_PATH -u PYTHONPATH PYTHONNOUSERSITE=1 \
-      conda run -p /home/h2048/miniconda3/envs/scarches_stable_pertpy \
-      python tissue_subcluster_milopy_20260418_v1.py
+        ENV_PREFIX=/path/to/pertpy_env
+        PYTHONNOUSERSITE=1 \
+            LD_LIBRARY_PATH=$ENV_PREFIX/lib:/usr/lib/R/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/jvm/default-java/lib/server \
+            $ENV_PREFIX/bin/python tissue_subcluster_milopy_20260418_v1.py
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ import argparse
 import json
 import logging
 import re
+import sys
 from dataclasses import asdict, dataclass
 from itertools import combinations
 from math import ceil
@@ -46,12 +49,18 @@ from scipy import sparse
 from scipy.stats import kruskal, mannwhitneyu
 from statsmodels.stats.multitest import multipletests
 
+ACTIVE_ENV_PREFIX = str(Path(sys.executable).resolve().parents[1])
+R_RUNTIME_LD_LIBRARY_PATH_HINT = (
+    f"{ACTIVE_ENV_PREFIX}/lib:/usr/lib/R/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/jvm/default-java/lib/server"
+)
+
 try:
     import pertpy as pt
 except Exception as exc:  # pragma: no cover - environment/runtime failure path
     raise SystemExit(
-        "Failed to import pertpy. Run this script inside the scarches_stable_pertpy "
-        f"environment with PYTHONNOUSERSITE=1. Original error: {exc}"
+        "Failed to import pertpy. Run this script with "
+        f"PYTHONNOUSERSITE=1 LD_LIBRARY_PATH={R_RUNTIME_LD_LIBRARY_PATH_HINT} "
+        f"{ACTIVE_ENV_PREFIX}/bin/python. Original error: {exc}"
     ) from exc
 
 
@@ -858,25 +867,33 @@ def run_level(
     coverage_df = summarize_celltypes(adata, cfg, celltype_col, level_label)
     coverage_df.to_csv(output_dir / "celltype_coverage_summary.csv", index=False)
 
-    eligible = coverage_df.loc[
+    prefilter_celltypes = coverage_df.loc[
         coverage_df["n_cells"] >= cfg.min_cells_per_celltype, "cell_type"
     ].tolist()
+    LOGGER.info("Eligible %s cell types after coverage prefilter: %s", level_label, prefilter_celltypes)
     if cfg.max_celltypes_per_level is not None:
-        eligible = eligible[: cfg.max_celltypes_per_level]
-    LOGGER.info("Eligible %s cell types (pre-filter): %s", level_label, eligible)
+        LOGGER.info(
+            "%s will process up to %d ready cell types after sample/tissue filtering.",
+            level_label,
+            cfg.max_celltypes_per_level,
+        )
 
     level_results: list[pd.DataFrame] = []
     subset_summaries: list[dict] = []
     pair_summaries: list[dict] = []
     violin_tables: list[pd.DataFrame] = []
     violin_stats_tables: list[pd.DataFrame] = []
+    processed_celltypes: list[str] = []
 
-    for cell_type in eligible:
+    for cell_type in prefilter_celltypes:
+        if cfg.max_celltypes_per_level is not None and len(processed_celltypes) >= cfg.max_celltypes_per_level:
+            break
         subset, subset_info = prepare_celltype_subset(adata, cell_type, celltype_col, level_label, cfg)
         subset_summaries.append(subset_info)
         if subset is None:
             LOGGER.info("Skipping %s | %s: %s", level_label, cell_type, subset_info.get("reason", "unknown"))
             continue
+        processed_celltypes.append(cell_type)
         try:
             results, pair_info, plot_df, plot_stats_df = run_milo_for_celltype(
                 adata,
@@ -904,6 +921,8 @@ def run_level(
                     "reason": str(exc),
                 }
             )
+
+    LOGGER.info("Processed %s ready cell types: %s", level_label, processed_celltypes)
 
     subset_df = pd.DataFrame(subset_summaries)
     pair_df = pd.DataFrame(pair_summaries)
@@ -993,7 +1012,8 @@ def run_level(
         "latent_key": latent_key,
         "umap_key": umap_key,
         "n_celltypes_coverage": int(coverage_df.shape[0]),
-        "n_celltypes_eligible": int(len(eligible)),
+        "n_celltypes_prefilter": int(len(prefilter_celltypes)),
+        "n_celltypes_eligible": int(len(processed_celltypes)),
         "n_celltypes_ready": int((subset_df.get("status", pd.Series(dtype=str)) == "ready").sum()) if not subset_df.empty else 0,
         "n_celltypes_with_results": int(results_df["cell_type"].nunique()) if not results_df.empty else 0,
         "n_pairwise_rows": int(pair_df.shape[0]),

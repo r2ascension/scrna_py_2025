@@ -16,3 +16,8 @@ __pycache__/
 
 # Nested Git repositories copied from working folders
 **/.git/
+
+# Generated outputs (not scripts)
+*.log
+*.pdf
+dotplot_csv/

@@ -1,0 +1,124 @@
+run:
+  output_root: /home/h2048/data/py/20260527
+  run_name_prefix: normal_airway_ml_mvp
+  random_seed: 20260527
+
+data_contract:
+  input_h5ad: /home/h2048/data/coredata0524/coredata0524_allcells_scanvi_l1_20260524.h5ad
+  counts_layer: counts
+  unknown_label: Unknown
+  sample_key_candidates:
+    - sample
+    - Sample
+    - orig.ident
+  dataset_key_candidates:
+    - dataset
+    - study
+    - batch
+  study_key_candidates:
+    - study
+    - dataset
+    - batch
+  batch_key_candidates:
+    - batch
+    - dataset
+    - study
+  tissue_key_candidates:
+    - tissue
+    - anatomical_site
+    - site
+  condition_key_candidates:
+    - condition
+    - disease_level_2
+    - group
+  cell_type_key_candidates:
+    - cell_type_L2
+    - cell_type_L3
+    - cell_type_L1
+  latent_key_candidates:
+    - X_scvi
+    - X_scanvi
+
+feature_export:
+  cell_type_key: cell_type_L2
+  min_cells_per_sample_celltype: 10
+  min_samples_per_celltype: 3
+  pseudobulk_top_genes: 200
+  pseudobulk_n_pcs: 5
+  latent_max_dims: 16
+  epsilon: 1.0e-6
+
+train:
+  label_column: site_label
+  dataset_group_column: dataset
+  n_splits: 4
+  logistic_max_iter: 2000
+  random_forest_estimators: 300
+  random_seed: 20260527
+  permutation_repeats: 10
+  model_names:
+    - logistic_regression
+    - ridge_logistic
+    - lasso_logistic
+    - elastic_net_logistic
+    - linear_svm
+    - random_forest
+    - lda
+    - naive_bayes
+
+core_discovery:
+  enabled: true
+  cell_type_key: cell_type_L2
+  counts_layer: counts
+  dataset_group_column: dataset
+  min_cells_per_sample_celltype: 10
+  min_samples_per_group: 2
+  min_total_samples: 4
+  pairwise: true
+  one_vs_rest: true
+  site_order:
+    - nasal
+    - sinus
+    - bronchus
+    - lung_parenchyma
+  min_total_count_per_gene: 10
+  min_detected_samples_per_gene: 2
+  max_genes_for_models: 300
+  model_top_k_genes: 40
+  stability_repeats: 12
+  test_size: 0.34
+  logistic_max_iter: 3000
+  random_forest_estimators: 300
+  elastic_net_l1_ratio: 0.5
+  methods:
+    - lasso_logistic
+    - elastic_net_logistic
+    - ridge_logistic
+    - linear_svm
+    - random_forest
+    - lda
+    - naive_bayes
+  stable_gene:
+    max_adj_p: 0.1
+    min_abs_log2_fc: 0.5
+    min_selection_freq: 0.35
+    min_selected_methods: 1
+    min_direction_consistency: 0.6
+  consensus_weights:
+    effect: 0.35
+    significance: 0.25
+    stability: 0.25
+    dataset_consistency: 0.15
+  export_pseudobulk_tables: true
+  random_seed: 20260527
+
+smoke:
+  real_input_h5ad: /home/h2048/data/R/0508/bcell_tissue_comparison_v2_6_8_c22_c13_c25_c14drop_20260508/bcell_tissue_comparison_final_fullgene.h5ad
+  toy_healthy_samples_per_site: 3
+  toy_disease_samples_per_site: 1
+  toy_cells_per_sample: 36
+  toy_n_genes: 120
+  toy_latent_dim: 16
+  real_samples_per_site: 2
+  real_max_cells_per_sample: 180
+  real_min_cells_per_sample: 30

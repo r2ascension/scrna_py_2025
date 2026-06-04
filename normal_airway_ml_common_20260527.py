@@ -110,6 +110,61 @@ def default_config() -> dict[str, Any]:
             "random_forest_estimators": 300,
             "random_seed": 20260527,
             "permutation_repeats": 10,
+            "model_names": [
+                "logistic_regression",
+                "ridge_logistic",
+                "lasso_logistic",
+                "elastic_net_logistic",
+                "linear_svm",
+                "random_forest",
+                "lda",
+                "naive_bayes",
+            ],
+        },
+        "core_discovery": {
+            "enabled": True,
+            "cell_type_key": "cell_type_L2",
+            "counts_layer": DEFAULT_COUNTS_LAYER,
+            "dataset_group_column": "dataset",
+            "min_cells_per_sample_celltype": 10,
+            "min_samples_per_group": 2,
+            "min_total_samples": 4,
+            "pairwise": True,
+            "one_vs_rest": True,
+            "site_order": ["nasal", "sinus", "bronchus", "lung_parenchyma"],
+            "min_total_count_per_gene": 10,
+            "min_detected_samples_per_gene": 2,
+            "max_genes_for_models": 300,
+            "model_top_k_genes": 40,
+            "stability_repeats": 12,
+            "test_size": 0.34,
+            "logistic_max_iter": 3000,
+            "random_forest_estimators": 300,
+            "elastic_net_l1_ratio": 0.5,
+            "methods": [
+                "lasso_logistic",
+                "elastic_net_logistic",
+                "ridge_logistic",
+                "linear_svm",
+                "random_forest",
+                "lda",
+                "naive_bayes",
+            ],
+            "stable_gene": {
+                "max_adj_p": 0.1,
+                "min_abs_log2_fc": 0.5,
+                "min_selection_freq": 0.35,
+                "min_selected_methods": 1,
+                "min_direction_consistency": 0.6,
+            },
+            "consensus_weights": {
+                "effect": 0.35,
+                "significance": 0.25,
+                "stability": 0.25,
+                "dataset_consistency": 0.15,
+            },
+            "export_pseudobulk_tables": True,
+            "random_seed": 20260527,
         },
         "smoke": {
             "real_input_h5ad": str(
@@ -217,6 +272,42 @@ def summarize_top_counts(series: pd.Series, top_n: int = 8) -> dict[str, int]:
     return {str(k): int(v) for k, v in clean.value_counts().head(top_n).items()}
 
 
+def resolve_sample_unit_labels(
+    sample_ids: pd.Series,
+    dataset_ids: pd.Series,
+    study_ids: pd.Series | None = None,
+    batch_ids: pd.Series | None = None,
+) -> pd.Series:
+    sample_series = normalize_string_series(sample_ids, missing_value="sample_missing")
+    dataset_series = normalize_string_series(dataset_ids, missing_value="dataset_missing")
+    study_series = normalize_string_series(study_ids if study_ids is not None else dataset_series, missing_value="study_missing")
+    batch_series = normalize_string_series(batch_ids if batch_ids is not None else dataset_series, missing_value="batch_missing")
+
+    collision_df = pd.DataFrame(
+        {
+            "sample": sample_series,
+            "dataset": dataset_series,
+            "study": study_series,
+            "batch": batch_series,
+        }
+    )
+    collision_counts = collision_df.groupby("sample", observed=True)[["dataset", "study", "batch"]].nunique()
+    ambiguous_sample = collision_counts.max(axis=1) > 1
+
+    prefix = dataset_series.copy()
+    prefix = prefix.where(prefix != "dataset_missing", study_series)
+    prefix = prefix.where(prefix != "study_missing", batch_series)
+
+    sample_unit = sample_series.where(~sample_series.map(ambiguous_sample).fillna(False), prefix + "::" + sample_series)
+    sample_unit = sample_unit.astype(str)
+
+    remaining_dup = sample_unit.duplicated(keep=False)
+    if bool(remaining_dup.any()):
+        sample_unit = sample_unit.where(~remaining_dup, prefix + "::" + batch_series + "::" + sample_series)
+
+    return sample_unit.astype(str)
+
+
 # ---------------------------------------------------------------------------
 # Metadata contract resolution
 # ---------------------------------------------------------------------------
@@ -297,6 +388,12 @@ def prepare_obs_contract(
         obs[batch_col] if batch_col else prepared["dataset_resolved"],
         missing_value="batch_missing",
     )
+    prepared["sample_unit_resolved"] = resolve_sample_unit_labels(
+        prepared["sample_resolved"],
+        prepared["dataset_resolved"],
+        study_ids=prepared["study_resolved"],
+        batch_ids=prepared["batch_resolved"],
+    )
     prepared["condition_resolved"] = normalize_string_series(
         obs[condition_col] if condition_col else pd.Series([DEFAULT_UNKNOWN_LABEL] * len(obs), index=obs.index),
         missing_value=DEFAULT_UNKNOWN_LABEL,
@@ -318,6 +415,7 @@ def prepare_obs_contract(
 
     contract = {
         "sample_col": sample_col,
+        "sample_unit_col": "sample_unit_resolved",
         "dataset_col": dataset_col,
         "study_col": study_col,
         "batch_col": batch_col,
@@ -598,9 +696,11 @@ def make_toy_airway_adata(cfg: dict[str, Any], seed: int | None = None) -> ad.An
 
 def build_sample_metadata(prepared_obs: pd.DataFrame, analysis_mask: pd.Series) -> pd.DataFrame:
     frame = prepared_obs.loc[analysis_mask].copy()
-    grouped = frame.groupby("sample_resolved", observed=True)
+    sample_group_col = "sample_unit_resolved" if "sample_unit_resolved" in frame.columns else "sample_resolved"
+    grouped = frame.groupby(sample_group_col, observed=True)
     sample_meta = grouped.agg(
         sample=("sample_resolved", lambda s: safe_mode(s, fallback="sample_missing")),
+        sample_unit=(sample_group_col, lambda s: safe_mode(s, fallback="sample_missing")),
         dataset=("dataset_resolved", safe_mode),
         study=("study_resolved", safe_mode),
         batch=("batch_resolved", safe_mode),
@@ -610,8 +710,8 @@ def build_sample_metadata(prepared_obs: pd.DataFrame, analysis_mask: pd.Series) 
         n_cells=("sample_resolved", "size"),
         n_cell_types=("cell_type_resolved", "nunique"),
     )
-    sample_meta.index.name = "sample"
-    sample_meta = sample_meta.reset_index(drop=True).set_index("sample", drop=False)
+    sample_meta.index.name = "sample_unit"
+    sample_meta = sample_meta.reset_index(drop=True).set_index("sample_unit", drop=False)
     return sample_meta
 
 
@@ -620,9 +720,10 @@ def aggregate_composition_features(
     analysis_mask: pd.Series,
     epsilon: float = 1e-6,
 ) -> dict[str, pd.DataFrame]:
-    frame = prepared_obs.loc[analysis_mask, ["sample_resolved", "cell_type_resolved"]].copy()
-    counts = pd.crosstab(frame["sample_resolved"], frame["cell_type_resolved"])
-    counts.index.name = "sample"
+    sample_group_col = "sample_unit_resolved" if "sample_unit_resolved" in prepared_obs.columns else "sample_resolved"
+    frame = prepared_obs.loc[analysis_mask, [sample_group_col, "cell_type_resolved"]].copy()
+    counts = pd.crosstab(frame[sample_group_col], frame["cell_type_resolved"])
+    counts.index.name = "sample_unit"
     fractions = counts.div(counts.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
     log_fraction = np.log(fractions + epsilon)
     clr = log_fraction.sub(log_fraction.mean(axis=1), axis=0)
@@ -632,11 +733,11 @@ def aggregate_composition_features(
         wide[f"composition_count__{col}"] = counts[col].astype(float)
         wide[f"composition_fraction__{col}"] = fractions[col].astype(float)
         wide[f"composition_clr__{col}"] = clr[col].astype(float)
-    wide.index.name = "sample"
+    wide.index.name = "sample_unit"
 
-    long = counts.reset_index().melt(id_vars="sample", var_name="cell_type", value_name="n_cells")
-    long["fraction"] = long.apply(lambda row: float(fractions.loc[row["sample"], row["cell_type"]]), axis=1)
-    long["clr"] = long.apply(lambda row: float(clr.loc[row["sample"], row["cell_type"]]), axis=1)
+    long = counts.reset_index().rename(columns={counts.index.name or sample_group_col: "sample_unit"}).melt(id_vars="sample_unit", var_name="cell_type", value_name="n_cells")
+    long["fraction"] = long.apply(lambda row: float(fractions.loc[row["sample_unit"], row["cell_type"]]), axis=1)
+    long["clr"] = long.apply(lambda row: float(clr.loc[row["sample_unit"], row["cell_type"]]), axis=1)
     return {"counts": counts, "fractions": fractions, "clr": clr, "wide": wide, "long": long}
 
 
@@ -653,18 +754,19 @@ def aggregate_latent_summary_features(
     if latent.ndim != 2 or latent.shape[0] != adata.n_obs:
         return {"status": "skipped", "reason": "invalid_latent_matrix", "wide": pd.DataFrame()}
     n_dims = int(min(max_dims, latent.shape[1]))
-    frame = prepared_obs.loc[analysis_mask, ["sample_resolved", "cell_type_resolved"]].copy()
+    sample_group_col = "sample_unit_resolved" if "sample_unit_resolved" in prepared_obs.columns else "sample_resolved"
+    frame = prepared_obs.loc[analysis_mask, [sample_group_col, "cell_type_resolved"]].copy()
     frame["row_idx"] = np.flatnonzero(np.asarray(analysis_mask, dtype=bool))
 
     feature_map: dict[str, dict[str, float]] = {}
-    for (sample_id, celltype), sub in frame.groupby(["sample_resolved", "cell_type_resolved"], observed=True):
+    for (sample_id, celltype), sub in frame.groupby([sample_group_col, "cell_type_resolved"], observed=True):
         coords = latent[sub["row_idx"].to_numpy(), :n_dims]
         mean_vec = coords.mean(axis=0)
         sample_features = feature_map.setdefault(str(sample_id), {})
         for dim_idx, value in enumerate(mean_vec, start=1):
             sample_features[f"latent_mean__{celltype}__dim_{dim_idx:03d}"] = float(value)
     wide = pd.DataFrame.from_dict(feature_map, orient="index").sort_index().fillna(0.0)
-    wide.index.name = "sample"
+    wide.index.name = "sample_unit"
     return {"status": "ok", "latent_key": latent_key, "n_dims": n_dims, "wide": wide}
 
 
@@ -688,10 +790,11 @@ def aggregate_pseudobulk_pca_features(
         return {"status": "skipped", "reason": f"missing_counts_layer:{counts_layer}", "wide": pd.DataFrame()}
 
     counts_matrix = adata.layers[counts_layer]
-    frame = prepared_obs.loc[analysis_mask, ["sample_resolved", "cell_type_resolved"]].copy()
+    sample_group_col = "sample_unit_resolved" if "sample_unit_resolved" in prepared_obs.columns else "sample_resolved"
+    frame = prepared_obs.loc[analysis_mask, [sample_group_col, "cell_type_resolved"]].copy()
     frame["row_idx"] = np.flatnonzero(np.asarray(analysis_mask, dtype=bool))
     group_sizes = (
-        frame.groupby(["sample_resolved", "cell_type_resolved"], observed=True)
+        frame.groupby([sample_group_col, "cell_type_resolved"], observed=True)
         .size()
         .rename("n_cells")
         .reset_index()
@@ -703,7 +806,7 @@ def aggregate_pseudobulk_pca_features(
     feature_map: dict[str, dict[str, float]] = {}
     skipped_celltypes: dict[str, str] = {}
     for celltype, celltype_rows in valid_groups.groupby("cell_type_resolved", observed=True):
-        samples = celltype_rows["sample_resolved"].astype(str).tolist()
+        samples = celltype_rows[sample_group_col].astype(str).tolist()
         if len(samples) < min_samples_per_celltype:
             skipped_celltypes[str(celltype)] = "insufficient_samples"
             continue
@@ -711,7 +814,7 @@ def aggregate_pseudobulk_pca_features(
         sample_ids: list[str] = []
         for sample_id in samples:
             idx = frame.loc[
-                (frame["sample_resolved"].astype(str) == str(sample_id))
+                (frame[sample_group_col].astype(str) == str(sample_id))
                 & (frame["cell_type_resolved"].astype(str) == str(celltype)),
                 "row_idx",
             ].to_numpy(dtype=int)
@@ -741,7 +844,7 @@ def aggregate_pseudobulk_pca_features(
             for pc_idx in range(n_components):
                 sample_features[f"pb_pca__{celltype}__PC{pc_idx + 1}"] = float(coords[row_idx, pc_idx])
     wide = pd.DataFrame.from_dict(feature_map, orient="index").sort_index().fillna(0.0)
-    wide.index.name = "sample"
+    wide.index.name = "sample_unit"
     return {
         "status": "ok" if not wide.empty else "skipped",
         "skipped_celltypes": skipped_celltypes,
@@ -761,7 +864,11 @@ def join_feature_blocks(sample_meta: pd.DataFrame, blocks: list[pd.DataFrame]) -
 
 
 def split_feature_metadata(feature_table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    meta_cols = [col for col in ["sample", "dataset", "study", "batch", "site_label", "site_axis", "condition", "n_cells", "n_cell_types"] if col in feature_table.columns]
+    meta_cols = [
+        col
+        for col in ["sample", "sample_unit", "dataset", "study", "batch", "site_label", "site_axis", "condition", "n_cells", "n_cell_types"]
+        if col in feature_table.columns
+    ]
     meta = feature_table.loc[:, meta_cols].copy()
     features = feature_table.drop(columns=meta_cols).copy()
     return meta, features

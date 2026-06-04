@@ -15,11 +15,13 @@ Notes
 
 Recommended invocation environment
 ----------------------------------
-Use the cloned environment and clear inherited user-site / library-path pollution:
+Use the pertpy environment directly, keep user-site packages disabled, and
+prepend the environment `lib/` ahead of system R libraries:
 
-    env -u LD_LIBRARY_PATH -u PYTHONPATH PYTHONNOUSERSITE=1 \
-      conda run -p /home/h2048/miniconda3/envs/scarches_stable_pertpy \
-      --no-capture-output python myeloid_milopy_tissue_celltype_20260410_v1.py
+        ENV_PREFIX=/path/to/pertpy_env
+        PYTHONNOUSERSITE=1 \
+            LD_LIBRARY_PATH=$ENV_PREFIX/lib:/usr/lib/R/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/jvm/default-java/lib/server \
+            $ENV_PREFIX/bin/python myeloid_milopy_tissue_celltype_20260410_v1.py
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ import argparse
 import json
 import logging
 import re
+import sys
 from dataclasses import asdict, dataclass
 from itertools import combinations
 from math import ceil
@@ -44,12 +47,18 @@ from scipy import sparse
 from scipy.stats import kruskal, mannwhitneyu
 from statsmodels.stats.multitest import multipletests
 
+ACTIVE_ENV_PREFIX = str(Path(sys.executable).resolve().parents[1])
+R_RUNTIME_LD_LIBRARY_PATH_HINT = (
+    f"{ACTIVE_ENV_PREFIX}/lib:/usr/lib/R/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/jvm/default-java/lib/server"
+)
+
 try:
     import pertpy as pt
 except Exception as exc:  # pragma: no cover - environment/runtime failure path
     raise SystemExit(
-        "Failed to import pertpy. Run this script inside the scarches_stable_pertpy "
-        f"environment with PYTHONNOUSERSITE=1. Original error: {exc}"
+        "Failed to import pertpy. Run this script with "
+        f"PYTHONNOUSERSITE=1 LD_LIBRARY_PATH={R_RUNTIME_LD_LIBRARY_PATH_HINT} "
+        f"{ACTIVE_ENV_PREFIX}/bin/python. Original error: {exc}"
     ) from exc
 
 
@@ -784,25 +793,29 @@ def main() -> None:
     celltype_summary = summarize_celltypes(adata, cfg)
     celltype_summary.to_csv(output_dir / "celltype_coverage_summary.csv", index=False)
 
-    eligible = celltype_summary.loc[
+    prefilter_celltypes = celltype_summary.loc[
         celltype_summary["n_cells"] >= cfg.min_cells_per_celltype, "cell_type"
     ].tolist()
+    LOGGER.info("Eligible cell types after coverage prefilter: %s", prefilter_celltypes)
     if cfg.max_celltypes is not None:
-        eligible = eligible[: cfg.max_celltypes]
-    LOGGER.info("Eligible cell types (pre-filter): %s", eligible)
+        LOGGER.info("Will process up to %d ready cell types after sample/tissue filtering.", cfg.max_celltypes)
 
     all_results: list[pd.DataFrame] = []
     subset_summaries: list[dict] = []
     pair_summaries: list[dict] = []
     violin_tables: list[pd.DataFrame] = []
     violin_stats_tables: list[pd.DataFrame] = []
+    processed_celltypes: list[str] = []
 
-    for cell_type in eligible:
+    for cell_type in prefilter_celltypes:
+        if cfg.max_celltypes is not None and len(processed_celltypes) >= cfg.max_celltypes:
+            break
         subset, subset_info = prepare_celltype_subset(adata, cell_type, cfg)
         subset_summaries.append(subset_info)
         if subset is None:
             LOGGER.info("Skipping %s: %s", cell_type, subset_info.get("reason", "unknown"))
             continue
+        processed_celltypes.append(cell_type)
         try:
             results, pair_info, plot_df, plot_stats_df = run_milo_for_celltype(adata, subset, cell_type, cfg, output_dir)
             all_results.extend(results)
@@ -818,6 +831,8 @@ def main() -> None:
                     "reason": str(exc),
                 }
             )
+
+    LOGGER.info("Processed ready cell types: %s", processed_celltypes)
 
     pd.DataFrame(subset_summaries).to_csv(output_dir / "celltype_subset_summary.csv", index=False)
     pd.DataFrame(pair_summaries).to_csv(output_dir / "pairwise_run_summary.csv", index=False)

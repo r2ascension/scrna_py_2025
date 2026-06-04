@@ -93,12 +93,16 @@ def run_feature_export(
         "n_samples": int(feature_table.shape[0]),
         "n_feature_columns": int(feature_table.shape[1] - sample_meta.shape[1]),
         "counts_info": counts_info,
-        "resolved_columns": {k: contract.get(k) for k in ["sample_col", "dataset_col", "study_col", "batch_col", "tissue_col", "condition_col", "cell_type_col", "latent_key"]},
+        "resolved_columns": {
+            k: contract.get(k)
+            for k in ["sample_col", "sample_unit_col", "dataset_col", "study_col", "batch_col", "tissue_col", "condition_col", "cell_type_col", "latent_key"]
+        },
         "analysis_n_cells": int(contract["n_analysis_cells"]),
         "feature_family_status": {
             "composition": "available",
             "latent_summary": latent.get("status", "skipped"),
             "pseudobulk_pca": pseudobulk.get("status", "skipped"),
+            "core_discovery_input": "available",
             "cnmf_usage": "pending",
             "communication": "pending",
         },

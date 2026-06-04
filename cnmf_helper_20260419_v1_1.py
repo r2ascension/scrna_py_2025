@@ -45,6 +45,11 @@ P1-6 [IMPROVE] select_hvg_robust: expanded from 2-tier to 3-tier fallback:
      batch-aware seurat_v3 -> non-batch seurat_v3 -> non-batch cell_ranger.
      The cell_ranger flavor is most tolerant of sparse/edge-case data.
 
+P1-8 [BUGFIX] select_hvg_robust: add a final manual log1p-dispersion HVG
+    fallback for degenerate small subsets where scanpy HVG selection fails
+    due to loess near-singularities or duplicate mean bins. Also skip the
+    batch-aware tier when the requested batch column has <2 observed values.
+
 P2-7 [IMPROVE] setup_logger: refactored from root-logger manipulation
      (logging.basicConfig + clear root handlers) to named logger with
      propagate=False. Non-invasive when used as an imported library module.
@@ -327,6 +332,105 @@ def detect_technical_genes(var_names: pd.Index) -> Dict[str, List[str]]:
 # SECTION 2 — HVG SELECTION
 # ============================================================================
 
+def _observed_value_count(adata: sc.AnnData, obs_col: Optional[str]) -> int:
+    """
+    Count non-empty observed values in an obs column.
+
+    Used to avoid batch-aware HVG selection when a subset only contains a
+    single effective batch label.
+    """
+    if not obs_col or obs_col not in adata.obs.columns:
+        return 0
+
+    vals = pd.Series(adata.obs[obs_col], dtype='object')
+    vals = vals[vals.notna()].astype(str).str.strip()
+    vals = vals[(vals != '') & ~vals.isin(['nan', 'None', 'NA'])]
+    return int(vals.nunique())
+
+
+def _manual_hvg_log1p_dispersion(
+    adata       : sc.AnnData,
+    num_hvg     : int = 3000,
+    target_sum  : float = 1e4,
+) -> Tuple[List[str], Dict[str, Any]]:
+    """
+    Last-resort HVG selector for degenerate subsets.
+
+    Strategy:
+      1. start from layers['counts']
+      2. library-normalize to target_sum
+      3. log1p transform
+      4. rank genes by log-normalized dispersion (variance / mean)
+
+    A light detection filter is applied first; if it leaves too few genes,
+    the filter is relaxed to genes with any non-zero count.
+    """
+    if 'counts' not in adata.layers:
+        raise ValueError("layers['counts'] not found for manual HVG fallback")
+
+    X = adata.layers['counts']
+    if sp.issparse(X):
+        X = X.tocsr(copy=True).astype(np.float64)
+    else:
+        X = sp.csr_matrix(np.asarray(X, dtype=np.float64))
+
+    target_n = min(num_hvg, max(1, adata.n_vars - 1))
+    if target_n < 1:
+        raise ValueError('Need at least 2 genes to select HVGs')
+
+    cell_sums = np.asarray(X.sum(axis=1)).ravel()
+    scale = np.divide(target_sum, np.maximum(cell_sums, 1.0))
+    X = X.multiply(scale[:, None]).tocsr()
+    X.data = np.log1p(X.data)
+
+    detected = np.asarray(X.getnnz(axis=0)).ravel()
+    min_detected_cells = max(3, int(np.ceil(adata.n_obs * 0.01)))
+    valid = detected >= min_detected_cells
+    detection_filter_relaxed = False
+    if int(valid.sum()) < target_n:
+        valid = detected > 0
+        detection_filter_relaxed = True
+
+    means = np.asarray(X.mean(axis=0)).ravel()
+    X_sq = X.copy()
+    X_sq.data **= 2
+    second_moment = np.asarray(X_sq.mean(axis=0)).ravel()
+    variances = np.maximum(second_moment - means ** 2, 0.0)
+
+    finite = valid & np.isfinite(means) & np.isfinite(variances) & (variances > 0)
+    if not finite.any():
+        raise RuntimeError('manual HVG fallback found no finite positive-variance genes')
+
+    dispersions = np.full(adata.n_vars, np.nan, dtype=float)
+    dispersions[finite] = variances[finite] / np.maximum(means[finite], 1e-3)
+
+    finite_idx = np.flatnonzero(finite)
+    ranked_idx = finite_idx[np.argsort(-dispersions[finite_idx], kind='mergesort')]
+    selected_idx = ranked_idx[: min(target_n, len(ranked_idx))]
+    if len(selected_idx) == 0:
+        raise RuntimeError('manual HVG fallback could not rank any genes')
+
+    hvg_mask = np.zeros(adata.n_vars, dtype=bool)
+    hvg_mask[selected_idx] = True
+    hvg_rank = np.full(adata.n_vars, np.nan, dtype=float)
+    hvg_rank[selected_idx] = np.arange(1, len(selected_idx) + 1, dtype=float)
+
+    adata.var['highly_variable'] = hvg_mask
+    adata.var['highly_variable_rank'] = hvg_rank
+    adata.var['means'] = means
+    adata.var['variances'] = variances
+    adata.var['dispersions'] = dispersions
+    adata.uns['hvg_manual_fallback'] = {
+        'method': 'manual-log1p-dispersion',
+        'target_sum': float(target_sum),
+        'min_detected_cells': int(min_detected_cells),
+        'detection_filter_relaxed': bool(detection_filter_relaxed),
+        'n_valid_ranked_genes': int(len(ranked_idx)),
+        'n_selected_genes': int(len(selected_idx)),
+    }
+
+    return adata.var_names[hvg_mask].tolist(), adata.uns['hvg_manual_fallback']
+
 def select_hvg_robust(
     adata          : sc.AnnData,
     num_hvg        : int             = 3000,
@@ -335,7 +439,7 @@ def select_hvg_robust(
     exclude_tech   : bool            = False,
 ) -> Tuple[List[str], str, Dict[str, List[str]]]:
     """
-    Robust HVG selection with batch-aware → non-batch-aware fallback.
+    Robust HVG selection with batch-aware → non-batch-aware → manual fallback.
 
     Always reads from layers['counts'].
     Caps num_hvg to adata.n_vars - 1 automatically.
@@ -362,11 +466,20 @@ def select_hvg_robust(
 
     logger.info(f"[INFO] Selecting {num_hvg} HVGs (flavor={hvg_flavor})...")
 
-    # 3-tier fallback: batch-aware → non-batch-aware (same flavor) → cell_ranger
+    n_batches = _observed_value_count(adata, batch_key)
+
+    # 4-tier fallback:
+    #   Tier-1: batch-aware seurat_v3 (only if >=2 observed batches)
+    #   Tier-2: non-batch-aware same flavor
+    #   Tier-3: non-batch-aware cell_ranger
+    #   Tier-4: manual log1p-dispersion ranking
     # Tier 1: batch-aware seurat_v3
     try:
-        if batch_key and batch_key in adata.obs.columns:
-            logger.info(f"  Tier-1: batch-aware HVG (batch_key={batch_key}, flavor={hvg_flavor})...")
+        if batch_key and batch_key in adata.obs.columns and n_batches >= 2:
+            logger.info(
+                f"  Tier-1: batch-aware HVG (batch_key={batch_key}, "
+                f"observed_batches={n_batches}, flavor={hvg_flavor})..."
+            )
             sc.pp.highly_variable_genes(
                 adata,
                 layer       = 'counts',
@@ -378,7 +491,9 @@ def select_hvg_robust(
             method_used = f'batch-aware-{hvg_flavor}'
             logger.info(f"  [OK] Tier-1 succeeded")
         else:
-            raise ValueError("No batch_key — skip Tier-1")
+            raise ValueError(
+                f"No usable batch_key (batch_key={batch_key}, observed_batches={n_batches}) — skip Tier-1"
+            )
     except Exception as e1:
         logger.warning(f"  Tier-1 failed ({e1}), trying Tier-2...")
         # Tier 2: non-batch-aware, same flavor
@@ -408,10 +523,24 @@ def select_hvg_robust(
                 method_used = 'non-batch-cell_ranger'
                 logger.info(f"  [OK] Tier-3 (cell_ranger) succeeded")
             except Exception as e3:
-                raise RuntimeError(
-                    f"All 3 HVG tiers failed.\n"
-                    f"  Tier-1: {e1}\n  Tier-2: {e2}\n  Tier-3: {e3}"
-                ) from e3
+                logger.warning(f"  Tier-3 failed ({e3}), trying Tier-4 (manual log1p-dispersion)...")
+                try:
+                    hvg_genes, manual_info = _manual_hvg_log1p_dispersion(
+                        adata,
+                        num_hvg=num_hvg,
+                    )
+                    method_used = 'manual-log1p-dispersion'
+                    logger.info(
+                        "  [OK] Tier-4 succeeded "
+                        f"(selected={manual_info.get('n_selected_genes')}, "
+                        f"valid={manual_info.get('n_valid_ranked_genes')}, "
+                        f"relaxed={manual_info.get('detection_filter_relaxed')})"
+                    )
+                except Exception as e4:
+                    raise RuntimeError(
+                        f"All 4 HVG tiers failed.\n"
+                        f"  Tier-1: {e1}\n  Tier-2: {e2}\n  Tier-3: {e3}\n  Tier-4: {e4}"
+                    ) from e4
 
     hvg_mask  = adata.var['highly_variable'].values
     hvg_genes = adata.var_names[hvg_mask].tolist()

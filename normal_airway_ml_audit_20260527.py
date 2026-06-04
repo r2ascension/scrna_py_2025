@@ -48,7 +48,7 @@ def run_audit(input_h5ad: Path | str, cfg: dict[str, Any], output_dir: Path | st
         "obsm": inventory["obsm"],
         "resolved_columns": {
             k: contract.get(k)
-            for k in ["sample_col", "dataset_col", "study_col", "batch_col", "tissue_col", "condition_col", "cell_type_col", "latent_key"]
+            for k in ["sample_col", "sample_unit_col", "dataset_col", "study_col", "batch_col", "tissue_col", "condition_col", "cell_type_col", "latent_key"]
         },
         "n_analysis_cells": int(contract["n_analysis_cells"]),
         "n_analysis_samples": int(sample_meta.shape[0]) if not sample_meta.empty else 0,
@@ -76,6 +76,7 @@ def run_audit(input_h5ad: Path | str, cfg: dict[str, Any], output_dir: Path | st
 
     prepared[[
         "sample_resolved",
+        "sample_unit_resolved",
         "dataset_resolved",
         "study_resolved",
         "batch_resolved",

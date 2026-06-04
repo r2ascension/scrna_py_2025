@@ -1,0 +1,79 @@
+# NOTE 2026-05-31:
+# This config belongs to an off-target disease-extension/internal-validation branch.
+# It should NOT be used for the user's requested healthy inter-tissue B-cell comparison.
+# The canonical healthy-only B-cell config is:
+#   /home/h2048/script/config/normal_airway_ml_bcell_full_run_20260531.yaml
+# using the healthy full-gene atlas:
+#   /home/h2048/data/R/0508/bcell_tissue_comparison_v2_6_8_c22_c13_c25_c14drop_20260508/bcell_tissue_comparison_final_fullgene.h5ad
+
+run:
+  output_root: /home/h2048/data/py/20260531
+  run_name_prefix: bcell_internal_site_core_validation_20260531
+  random_seed: 20260531
+
+bcell_internal_site_core_validation:
+  healthy_de_root: /home/h2048/data/R/0508/bcell_tissue_comparison_v2_6_8_c22_c13_c25_c14drop_20260508/pseudobulk_de
+  disease_query_h5ad: /home/h2048/data/py/0523/full_nocovid_20260523/scarches_mapping_FIXED_v1_2_subsets_nocovid_20260523/b_cells.h5ad
+  merged_query_h5ad: /home/h2048/data/py/0523/full_nocovid_20260523/bcell_merge_schpl_nocovid_20260523/bcell_reference_plus_query_schpl_v1_0_nocovid_20260523.h5ad
+  panel_filename: DESeq2_results.csv
+  query_join:
+    merged_query_prefix: 'qry::qry::'
+    query_join_key: obs_names
+    merged_join_key: obs_names_without_prefix
+  labels:
+    subtype_column_candidates:
+      - viz__qry_label_final_only
+      - Cell_Type_L2_final
+      - Cell_Type_L2_pred
+    rejection_column_candidates:
+      - schpl_rejected
+    subtype_whitelist:
+      - Naive_B
+      - Memory_B
+      - Plasma
+    exclude_labels:
+      - Unknown
+      - Atypical_Memory_B
+      - GC_B
+  grouping:
+    sample_key: sample
+    tissue_key: tissue
+    disease_key: disease_level_1
+    condition_key: condition
+    dataset_key: dataset
+    healthy_reference_label: healthy
+  panel_builder:
+    subtype_whitelist:
+      - Naive_B
+      - Memory_B
+      - Plasma
+    max_padj: 0.05
+    min_abs_log2fc: 0.5
+    min_supporting_contrasts: 2
+    strict_single_anchor_site: true
+    query_supported_sites:
+      - nose
+      - sinus
+  validation:
+    query_supported_sites:
+      - nose
+      - sinus
+    min_panel_genes: 5
+    min_cells_per_sample_subtype: 20
+    min_samples_per_group: 2
+    zscore_clip: 5.0
+    score_method: mean_zscore
+  viz:
+    dpi: 300
+    max_panels_per_subtype: 8
+    subtype_order:
+      - Naive_B
+      - Memory_B
+      - Plasma
+    site_order:
+      - nose
+      - sinus
+  explain:
+    enabled: false
+    provider: deepseek
+    model: deepseek-chat

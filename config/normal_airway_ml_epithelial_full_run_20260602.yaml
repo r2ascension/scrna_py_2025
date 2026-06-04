@@ -1,0 +1,12 @@
+data_contract:
+  input_h5ad: /home/h2048/data/R/0508/epithelial_tissue_comparison_v1_3_3_rm_leiden14_17_20260508/epithelial_tissue_comparison_final_fullgene.h5ad
+  condition_key_candidates:
+    - lung_condition
+    - condition
+    - disease_level_2
+feature_export:
+  cell_type_key: cell_type_L3
+core_discovery:
+  cell_type_key: cell_type_L3
+smoke:
+  real_input_h5ad: /home/h2048/data/R/0508/epithelial_tissue_comparison_v1_3_3_rm_leiden14_17_20260508/epithelial_tissue_comparison_final_fullgene.h5ad
