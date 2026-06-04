@@ -7,7 +7,7 @@
 - `py/`：负责 scVI / scANVI / CellTypist / scArches 等深度学习整合、注释与可视化
 - `R/`：负责 Seurat v5 质控、统计分析、差异表达、轨迹分析与结果解释
 
-> 当前仓库以 `R/` 和 `py/` 目录中的脚本为主；根目录仅保留共享入口、桥接脚本和少量历史文件。
+> 当前仓库以 `R/` 和 `py/` 目录中的脚本为主；重复脚本统一只在子目录中保留。
 
 ---
 
@@ -17,7 +17,6 @@
 scrna_py_2025/
 ├── R/                     # Seurat、QC、DE、trajectory、interpretation
 ├── py/                    # scVI/scANVI、CellTypist、BBKNN、scArches
-├── GetSeurat.R            # h5ad → Seurat 读取桥接
 └── README.md
 ```
 
@@ -72,7 +71,7 @@ R 侧重点在统计与解释：
 推荐通过 `GetSeurat()` 导入 h5ad：
 
 ```r
-source("GetSeurat.R")
+source("R/GetSeurat.R")
 seurat_obj <- GetSeurat(
   h5ad_path = "path/to/file.h5ad",
   prefer_raw = TRUE,
@@ -111,7 +110,7 @@ adata.write_h5ad("output.h5ad")
 R 侧导入：
 
 ```r
-source("GetSeurat.R")
+source("R/GetSeurat.R")
 seurat_obj <- GetSeurat("output.h5ad", validate_counts = TRUE)
 ```
 
@@ -168,9 +167,9 @@ pip install scanpy scvi-tools celltypist bbknn anndata
 ## 文件组织说明
 
 - **优先使用 `R/` 与 `py/` 下的脚本**，它们是当前的主目录
-- 根目录保留少量共享脚本与兼容入口
+- 根目录以说明文档和入口信息为主
 - 脚本通常带日期与版本号，便于追踪迭代
-- 若根目录与子目录存在同名且内容完全一致的文件，应以子目录版本为准
+- 若存在历史重复脚本，统一以 `R/` 或 `py/` 中版本为准
 
 命名示例：
 
@@ -194,7 +193,7 @@ pip install scanpy scvi-tools celltypist bbknn anndata
 
 当前仓库包含较多历史脚本和实验版本。若你是首次接手，建议优先从以下入口理解整体流程：
 
-1. `GetSeurat.R`
+1. `R/GetSeurat.R`
 2. `R/rds_folder_qc_smartmerge_20251216_v5.R`
 3. `py/allcells_scvi_celltypist_scanvi_pipeline_20260121_v2_5_2.py`
 4. `py/universal_celltype_subcluster_pipeline_20260121_v4_1.py`
