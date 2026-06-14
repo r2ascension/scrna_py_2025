@@ -17,6 +17,7 @@
 scrna_py_2025/
 ├── R/                     # Seurat、QC、DE、trajectory、interpretation
 ├── py/                    # scVI/scANVI、CellTypist、BBKNN、scArches
+├── tests/                 # 当前保留的 Python 测试入口
 └── README.md
 ```
 
@@ -167,6 +168,7 @@ pip install scanpy scvi-tools celltypist bbknn anndata
 ## 文件组织说明
 
 - **优先使用 `R/` 与 `py/` 下的脚本**，它们是当前的主目录
+- Python 测试统一保留在仓库根目录 `tests/`
 - 根目录以说明文档和入口信息为主
 - 脚本通常带日期与版本号，便于追踪迭代
 - 若存在历史重复脚本，统一以 `R/` 或 `py/` 中版本为准
