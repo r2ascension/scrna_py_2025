@@ -772,7 +772,7 @@ run_pipeline_A <- function(seurat_obj      = NULL,
 # ==============================================================================
 
 if (!interactive()) {
-  # 命令行运行：Rscript phenotype_gene_pipeline_A_pseudobulk_hpo_enrichment.R
+  # 命令行运行：Rscript R/phenotype_gene_pipeline_A_pseudobulk_hpo_enrichment.R
   # 可通过修改顶部配置参数（SEURAT_RDS_PATH 等）切换为真实数据
   seurat_input <- if (!is.null(SEURAT_RDS_PATH) && file.exists(SEURAT_RDS_PATH)) {
     message(sprintf("加载 Seurat RDS: %s", SEURAT_RDS_PATH))

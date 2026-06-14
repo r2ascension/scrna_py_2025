@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 TEST_DIR = Path(__file__).resolve().parent
-PY_DIR = TEST_DIR.parent
+PY_DIR = TEST_DIR.parent / "py"
 if str(PY_DIR) not in sys.path:
     sys.path.insert(0, str(PY_DIR))
 

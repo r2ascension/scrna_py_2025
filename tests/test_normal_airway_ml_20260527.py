@@ -6,10 +6,11 @@ from pathlib import Path
 
 import pandas as pd
 
-PY_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PY_DIR = REPO_ROOT / "py"
 if str(PY_DIR) not in sys.path:
     sys.path.insert(0, str(PY_DIR))
-NORMAL_AIRWAY_ML_MODULE_DIR = PY_DIR / "normal_airway_ml"
+NORMAL_AIRWAY_ML_MODULE_DIR = REPO_ROOT / "normal_airway_ml"
 if str(NORMAL_AIRWAY_ML_MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(NORMAL_AIRWAY_ML_MODULE_DIR))
 

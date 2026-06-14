@@ -11,7 +11,7 @@ from typing import Any
 
 import anndata as ad
 
-NORMAL_AIRWAY_ML_MODULE_DIR = Path(__file__).resolve().parent / "normal_airway_ml"
+NORMAL_AIRWAY_ML_MODULE_DIR = Path(__file__).resolve().parents[1] / "normal_airway_ml"
 if str(NORMAL_AIRWAY_ML_MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(NORMAL_AIRWAY_ML_MODULE_DIR))
 
