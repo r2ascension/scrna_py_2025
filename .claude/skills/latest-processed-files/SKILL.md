@@ -53,8 +53,8 @@ metadata:
 | 阶段 | 推荐文件 | 旧文件或相邻文件 | 用途 |
 |---|---|---|---|
 | Reference training | `step1_train_bcell_L2_20260204_v2_5_3.py` | 2026-01 的 B cell 主流程 | 训练 B 细胞 L2 reference，保存 UMAP operator、reference_with_umap 和 HVG 列表。 |
-| Query mapping | `step2_map_query_20260204_v2_5_4.py` | `step2_map_query_20260204_v2_5_3.py` | 将 query 映射到 L2 reference，并修正 metadata restore 与 merge 稳定性问题。 |
-| Full-gene merge + visualization | `20260204_complete_merge_and_visualize_v1_2.py` | `20260204_standalone_merge_ref_query.py`, `20260204_complete_merge_and_visualize_v1_1.py` | 在 full-gene 保留前提下完成 ref+query 合并，适合后续 merged training 之前的结果检查。 |
+| Query mapping | `step2_map_query_20260204_v2_5_4.py` | 同批次 2026-02 mapping 初稿 | 将 query 映射到 L2 reference，并修正 metadata restore 与 merge 稳定性问题。 |
+| Full-gene merge + visualization | `20260204_complete_merge_and_visualize_v1_2.py` | `20260204_standalone_merge_ref_query.py` | 在 full-gene 保留前提下完成 ref+query 合并，适合后续 merged training 之前的结果检查。 |
 | Merged retrain | `merged_scanvi_training_20260208_v2_5_5.py` | `bcell_merged_scanvi_training_20260207_v2_5_3.py` | 2 月这条线的生产热修版本，统一 label 构建、强化 counts 校验，并补充诊断输出。 |
 
 ### 2. 上皮细胞 3 月组合流程
@@ -73,8 +73,8 @@ metadata:
 
 | 阶段 | 推荐文件 | 旧文件或相邻文件 | 用途 |
 |---|---|---|---|
-| Ref-query merge | `myeloid_only_ref_query_merge_pipeline_20260225_v1_1.py` | `myeloid_only_ref_query_merge_pipeline_20260225_v1_0.py` | 先把 myeloid reference 和 query 合并到同一训练对象，修复了 v1.0 误指向 T 细胞路径的问题。 |
-| Filtered retrain | `myeloid_only_merged_pipeline_20260315_v2_2.py` | `myeloid_only_merged_pipeline_20260315_v2_1.py` | 基于 CellTypist 过滤污染细胞后重训 scVI/scANVI，是 3 月 myeloid 主线的后处理版本。 |
+| Ref-query merge | `myeloid_only_ref_query_merge_pipeline_20260225_v1_1.py` | 同批次 2026-02 merge 初稿 | 先把 myeloid reference 和 query 合并到同一训练对象，修复了早期版本误指向 T 细胞路径的问题。 |
+| Filtered retrain | `myeloid_only_merged_pipeline_20260315_v2_2.py` | 同批次 2026-03 filtered retrain 初稿 | 基于 CellTypist 过滤污染细胞后重训 scVI/scANVI，是 3 月 myeloid 主线的后处理版本。 |
 
 补充说明：
 - [myeloid_only_merged_pipeline_20260315_v2_2.py](/home/h2048/script/py/myeloid_only_merged_pipeline_20260315_v2_2.py) 的文件头仍写 v2.1.1 HOTFIX，路径名则已经到 v2_2，检索时要按文件路径和更新日期识别。
@@ -83,8 +83,8 @@ metadata:
 
 | 阶段 | 推荐文件 | 旧文件或相邻文件 | 用途 |
 |---|---|---|---|
-| scArches-ready reference | `tnk_scvi_scanvi_scarches_ref_20260315_v1_1.py` | 2026-01 的 `t_scvi_celltypist_scanvi_20260108_v3_5_1.py` | 构建 T/NK reference，补充全局 finite 检查、sanitize_sparse_counts 和 4-tier HVG fallback。 |
-| Ref-query merge | `tcell_only_ref_query_merge_pipeline_20260225_v1_1.py` | `tcell_only_ref_query_merge_pipeline_20260225_v1_0.py` | T cell only 的 ref-query merge 主脚本；文件头已升级到 v1.2，但路径名仍停留在 v1_1。 |
+| scArches-ready reference | `tnk_scvi_scanvi_scarches_ref_20260315_v1_2.py` | 2026-01 的 `t_scvi_celltypist_scanvi_20260108_v3_5_1.py` | 构建 T/NK reference，补充全局 finite 检查、sanitize_sparse_counts、write_h5ad 前清理和 4-tier HVG fallback。 |
+| Ref-query merge | `tcell_only_ref_query_merge_pipeline_20260225_v1_1.py` | 同批次 2026-02 merge 初稿 | T cell only 的 ref-query merge 主脚本；文件头已升级到 v1.2，但路径名仍停留在 v1_1。 |
 | Filtered retrain | `tcell_only_merged_pipeline_20260315_v2_2.py` | 2026-02 的 merged 预处理链路 | 基于 CellTypist 去污染后重训 T/NK-only 模型，并修复 cycling NK、raw 附着时机和标签审计逻辑。 |
 
 ### 5. Stromal reintegration 和 query mapping

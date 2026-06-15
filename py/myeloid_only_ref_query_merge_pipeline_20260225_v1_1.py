@@ -33,7 +33,7 @@ All fixes from v1.2 T cell pipeline are inherited:
   - BUG-3: obsm latent representations use pandas reindex
   - BUG-4: query_mask.values for numpy boolean indexing
 
-Based on: myeloid_only_ref_query_merge_pipeline_20260225_v1_0.py
+Based on: earlier myeloid ref-query merge draft
 Author: Claude Code
 Date: 2026-02-25
 Version: 1.1

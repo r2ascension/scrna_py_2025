@@ -21,7 +21,8 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 
-PY_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PY_ROOT = REPO_ROOT / "py"
 if str(PY_ROOT) not in sys.path:
     sys.path.insert(0, str(PY_ROOT))
 

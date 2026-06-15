@@ -8,7 +8,9 @@ import h5py
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, "/home/h2048/script/py")
+PY_DIR = Path(__file__).resolve().parents[1] / "py"
+if str(PY_DIR) not in sys.path:
+    sys.path.insert(0, str(PY_DIR))
 
 from upper_lower_airway_reproduction_20260523 import (  # noqa: E402
     annotate_pairwise_columns,

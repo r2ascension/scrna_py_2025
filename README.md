@@ -1,13 +1,26 @@
 # scrna_py_2025
 
-面向 **鼻腔 / 呼吸道组织单细胞 RNA-seq** 的双语言分析仓库，核心场景包括免疫细胞分析、CRSwNP（Chronic Rhinosinusitis with Nasal Polyps）相关研究，以及参考图谱映射与下游统计解释。
+面向**鼻腔 / 鼻窦 / 呼吸道组织单细胞 RNA-seq**的分析仓库，覆盖从 QC、整合、注释、亚群分析，到参考映射、组织比较、cNMF 程序分析与结果可视化的完整工作流。
 
-仓库采用 **Python + R** 双轨工作流：
+仓库以 **Python + R 双栈协作**为核心：
 
-- `py/`：负责 scVI / scANVI / CellTypist / scArches 等深度学习整合、注释与可视化
-- `R/`：负责 Seurat v5 质控、统计分析、差异表达、轨迹分析与结果解释
+- `py/`：scVI / scANVI / CellTypist / scArches / cNMF / 可视化
+- `R/`：Seurat v5 / QC / pseudobulk / MASC / Monocle3 / 富集分析
+- 其余顶层目录：按专题拆分的模块化流程、配置与测试
 
-> 当前仓库以 `R/` 和 `py/` 目录中的脚本为主；重复脚本统一只在子目录中保留。
+> 当前主入口脚本统一保留在子目录中，根目录以说明文档和模块目录为主。
+
+---
+
+## 这是什么仓库
+
+这个仓库主要服务于以下几类任务：
+
+1. **全细胞整合与注释**：scVI → CellTypist → scANVI
+2. **谱系专项分析**：T / B / Myeloid / Stromal / Epithelial
+3. **Python ↔ R 桥接**：AnnData (`.h5ad`) 与 Seurat (`.rds`) 互转
+4. **下游统计**：pseudobulk、MASC、差异表达、富集分析
+5. **高级专题**：scArches 映射、non-unified airway 比较、normal airway ML、细胞通讯、SCENIC / cNMF
 
 ---
 
@@ -15,39 +28,88 @@
 
 ```text
 scrna_py_2025/
-├── R/                     # Seurat、QC、DE、trajectory、interpretation
-├── py/                    # scVI/scANVI、CellTypist、BBKNN、scArches
-├── tests/                 # 当前保留的 Python 测试入口
-└── README.md
+├── README.md
+├── R/                      # R/Seurat 主流程与统计分析
+├── py/                     # Python/scanpy/scvi-tools 主流程与可视化
+├── tests/                  # 主要 Python 单元测试
+├── bcell/                  # B 细胞专题模块
+├── epithelial/             # 上皮细胞专题模块与测试
+├── non_unified_airway/     # 上下气道/非统一气道比较流程
+├── normal_airway_ml/       # normal airway 机器学习与可视化模块
+├── config/                 # YAML / JSON 运行配置
+├── core/                   # 通用核心逻辑
+└── 其他专题目录/文档
 ```
 
-### `py/` 主要内容
+### 目录职责
 
-Python 侧主线流程通常遵循三阶段：
+#### `py/`
 
-1. **scVI**：基于原始 counts 进行批次校正与潜空间学习
-2. **CellTypist**：自动细胞类型注释
-3. **scANVI**：结合标签进行半监督精炼
+偏向深度学习整合与 AnnData 工作流，常见内容包括：
 
-常见任务包括：
+- scVI / scANVI 训练与重训练
+- CellTypist 自动注释与标签精炼
+- scArches 参考构建、query 映射、合并可视化
+- cNMF、MILO、marker 可视化、结果审查
+- 针对主要谱系的专项流程脚本
 
-- 全细胞整合与注释
-- T / B / Myeloid / Stromal / Epithelial 等谱系专项分析
-- BBKNN / marker 分析
-- scArches 参考构建与 query 映射
-- Notebook 可视化与结果核查
+#### `R/`
 
-### `R/` 主要内容
-
-R 侧重点在统计与解释：
+偏向统计分析与生物学解释，常见内容包括：
 
 - RDS / h5ad 导入与格式桥接
 - QC、DoubletFinder、DecontX、智能合并
-- Seurat v5 整合、亚群分析与 marker 解读
-- MAST / DESeq2 / pseudobulk / MASC
-- Monocle3 轨迹分析
-- BayesPrism bulk RNA 解卷积
-- LLM 辅助亚群解释脚本
+- Seurat v5 亚群分析与 marker 解释
+- pseudobulk、MAST、MASC、轨迹分析
+- BayesPrism、SCENIC、富集分析、报告型可视化
+
+#### 模块化目录
+
+- `bcell/`：B 细胞整合、内部 signature、可视化子模块
+- `epithelial/`：上皮细胞细分流程与局部测试
+- `non_unified_airway/`：气道组织分层、site group、通讯分析
+- `normal_airway_ml/`：normal airway 机器学习训练/验证/可视化
+- `config/`：为较新的流程提供参数文件，避免把配置硬编码进脚本
+
+---
+
+## 推荐入口
+
+如果你第一次接手这个仓库，建议按下面顺序理解：
+
+### 1. R 侧数据导入与 QC
+
+- `R/GetSeurat.R`
+- `R/rds_folder_qc_smartmerge_20251216_v5.R`
+- `R/gene_standardization_merge_20251221_v4_2.R`
+
+### 2. Python 侧全细胞整合
+
+- `py/allcells_scvi_celltypist_scanvi_pipeline_20260121_v2_5_2.py`
+- `py/universal_celltype_subcluster_pipeline_20260121_v4_1.py`
+
+### 3. 谱系专项流程
+
+- T / NK：`py/t_scvi_celltypist_scanvi_20260108_v3_5_1.py`
+- B：`py/bcell_scvi_celltypist_scanvi_pipeline_20260111_v3_5_1.py`
+- Myeloid：`py/myeloid_scvi_scanvi_v2_4_20260322.py`
+- Stromal：`py/stromal_scvi_celltypist_scanvi_pipeline_20260110_v3_5_1.py`
+- Epithelial：`py/epithelial_scvi_scanvi_20260317_v2_7.py`
+
+### 4. 参考映射 / 合并 / 可视化
+
+- `py/scarches_mapping_20260127_v1_2_1.py`
+- `py/20260204_standalone_merge_ref_query.py`
+- `py/20260204_complete_merge_and_visualize_v1_2.py`
+- `py/visualize_query_results_20260204.py`
+
+### 5. 下游统计与解释
+
+- `R/pseudobulk.R`
+- `R/MAST_pipeline_20251223.R`
+- `R/tissue_comparison_analysis_20251222.R`
+- `R/interpret.R`
+- `R/bayesprism_deconvolution_production_20260124.R`
 
 ---
 
@@ -55,17 +117,18 @@ R 侧重点在统计与解释：
 
 ### Python / AnnData
 
-- `adata.X`：处理后的表达矩阵
-- `adata.layers['counts']`：原始 UMI counts（scVI 必需）
-- `adata.raw`：保留全基因表达信息
+- `adata.X`：当前用于分析的表达矩阵
+- `adata.layers["counts"]`：原始 UMI counts（scVI / scANVI 必需）
+- `adata.raw`：保留全基因表达或原始矩阵
 
 常见 `obs` 字段：
 
-- `celltype`
+- `sample` / `sample_id`
+- `dataset`
+- `tissue`
+- `celltype` 或相关标签列
 - `majority_voting`
 - `Multinomial_Label`
-- `sample` / `sample_id`
-- `tissue`
 
 ### R / Seurat
 
@@ -73,6 +136,7 @@ R 侧重点在统计与解释：
 
 ```r
 source("R/GetSeurat.R")
+
 seurat_obj <- GetSeurat(
   h5ad_path = "path/to/file.h5ad",
   prefer_raw = TRUE,
@@ -86,44 +150,49 @@ seurat_obj <- GetSeurat(
 
 ## 常见工作流
 
-### 1. Python：全细胞整合与注释
+### 工作流 1：从 Python 整合到 R 统计
 
-推荐从 `py/` 目录中的主流程脚本开始，例如：
+1. 在 `py/` 运行整合 / 注释主流程  
+2. 导出 `.h5ad`  
+3. 在 `R/` 使用 `GetSeurat()` 读入  
+4. 继续做 pseudobulk、富集、轨迹或 tissue comparison
 
-- `py/allcells_scvi_celltypist_scanvi_pipeline_20260121_v2_5_2.py`
-- `py/t_scvi_celltypist_scanvi_20260108_v3_5_1.py`
-- `py/myeloid_scvi_scanvi_v2_4_20260322.py`
-- `py/stromal_scvi_celltypist_scanvi_pipeline_20260110_v3_5_1.py`
-
-### 2. R：QC + 智能合并
-
-- `R/rds_folder_qc_smartmerge_20251216_v5.R`
-- `R/gene_standardization_merge_20251221_v4_2.R`
-
-### 3. Python → R 桥接
-
-Python 侧导出：
+Python 导出：
 
 ```python
 adata.write_h5ad("output.h5ad")
 ```
 
-R 侧导入：
+R 导入：
 
 ```r
 source("R/GetSeurat.R")
 seurat_obj <- GetSeurat("output.h5ad", validate_counts = TRUE)
 ```
 
-### 4. R：下游统计与解释
+### 工作流 2：新数据直接做全细胞注释
 
-常见入口：
+推荐从以下脚本起步：
 
-- `R/MAST_pipeline_20251223.R`
+- `py/allcells_scvi_celltypist_scanvi_pipeline_20260121_v2_5_2.py`
+- 或按谱系拆分到对应专项流程
+
+### 工作流 3：已有参考模型做 query 映射
+
+推荐从以下脚本起步：
+
+- `py/scarches_mapping_20260127_v1_2_1.py`
+- `py/20260204_standalone_merge_ref_query.py`
+- `py/20260205_visualize_merged_highquality.py`
+
+### 工作流 4：R 侧组织比较与解释
+
+推荐入口：
+
 - `R/pseudobulk.R`
+- `R/scMASC.R`
 - `R/tissue_comparison_analysis_20251222.R`
-- `R/interpret.R`
-- `R/bayesprism_deconvolution_production_20260124.R`
+- `R/enrichment_functions.R`
 
 ---
 
@@ -131,12 +200,12 @@ seurat_obj <- GetSeurat("output.h5ad", validate_counts = TRUE)
 
 ### Python
 
-建议使用独立 conda 环境（仓库内文档常以 `bbknn_env` 为例）：
+仓库内脚本通常假设使用单独的 conda 环境（文档中常见名称为 `bbknn_env`）：
 
 ```bash
 conda create -n bbknn_env python=3.10
 conda activate bbknn_env
-pip install scanpy scvi-tools celltypist bbknn anndata
+pip install scanpy scvi-tools celltypist bbknn anndata pandas numpy scipy h5py
 ```
 
 常见依赖：
@@ -146,39 +215,51 @@ pip install scanpy scvi-tools celltypist bbknn anndata
 - `celltypist`
 - `bbknn`
 - `anndata`
+- `pandas`
+- `h5py`
 - `torch`
 - `lightning`
 
 ### R
 
-常用包包括：
+常见包包括：
 
 - `Seurat`
-- `harmony`
+- `reticulate`
 - `DoubletFinder`
 - `celda` / `DecontX`
-- `MAST`
 - `DESeq2`
+- `MAST`
 - `clusterProfiler`
 - `monocle3`
-- `reticulate`
+- `BayesPrism`
 
 ---
 
-## 文件组织说明
+## 测试
 
-- **优先使用 `R/` 与 `py/` 下的脚本**，它们是当前的主目录
-- Python 测试统一保留在仓库根目录 `tests/`
-- 根目录以说明文档和入口信息为主
-- 脚本通常带日期与版本号，便于追踪迭代
-- 若存在历史重复脚本，统一以 `R/` 或 `py/` 中版本为准
+仓库当前包含以 Python 为主的回归/单元测试，主要位于：
 
-命名示例：
+- `tests/`
+- `epithelial/tests/`
 
-- `allcells_scvi_celltypist_scanvi_pipeline_20260121_v2_5_2.py`
-- `myeloid_scvi_scanvi_v2_4_20260322.py`
-- `bcell_interpret_PRODUCTION_v2_0_20260127.R`
-- `epithelial_subcluster_interpret_20260210_v4.R`
+在当前沙箱环境中，直接运行：
+
+```bash
+python3 -m unittest discover -s tests -q
+```
+
+会因为缺少 `anndata`、`pandas`、`h5py` 等科学计算依赖而失败；在完整分析环境安装后再执行更合适。
+
+---
+
+## 文件组织约定
+
+- 优先使用子目录中的脚本，不在根目录堆放重复分析脚本
+- `R/` 与 `py/` 仍然是最主要的历史脚本入口
+- 较新的专题流程逐步拆到独立模块目录中
+- 文件名常包含日期与版本号，便于追踪迭代
+- 若同类脚本存在多个版本，应优先查看日期更近、带明确版本号或配置文件配套的实现
 
 ---
 
@@ -188,15 +269,16 @@ pip install scanpy scvi-tools celltypist bbknn anndata
 - `R/CLAUDE.md`
 - `py/SCRIPT_CATEGORIZATION.md`
 - `py/skills/README.md`
+- `PROJECT_EXPERIENCE_CONSOLIDATED_20260415.md`
 
 ---
 
-## 备注
+## 一句话建议
 
-当前仓库包含较多历史脚本和实验版本。若你是首次接手，建议优先从以下入口理解整体流程：
+如果你只是想尽快找到主流程：
 
-1. `R/GetSeurat.R`
-2. `R/rds_folder_qc_smartmerge_20251216_v5.R`
-3. `py/allcells_scvi_celltypist_scanvi_pipeline_20260121_v2_5_2.py`
-4. `py/universal_celltype_subcluster_pipeline_20260121_v4_1.py`
-5. `py/scarches_mapping_20260127_v1_2_1.py`
+- **全细胞整合**：`py/allcells_scvi_celltypist_scanvi_pipeline_20260121_v2_5_2.py`
+- **Python → R 桥接**：`R/GetSeurat.R`
+- **QC 合并**：`R/rds_folder_qc_smartmerge_20251216_v5.R`
+- **query 映射**：`py/scarches_mapping_20260127_v1_2_1.py`
+- **组织比较**：`R/pseudobulk.R`
